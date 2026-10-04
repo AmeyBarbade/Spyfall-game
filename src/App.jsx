@@ -131,13 +131,14 @@ export default function App() {
 
   // ─── Category: start game with the chosen secret word ──────────
   const handleStartGame = useCallback(
-    (word) => {
+    (word, selectedCats) => {
       setSecretWord(word)
 
-      // Persist the used word into the active game
+      // Persist the used word + last selected categories into the active game
       const updatedGame = {
         ...activeGame,
         usedWords: [...activeGame.usedWords, word],
+        lastSelectedCategories: selectedCats,
       }
       setActiveGame(updatedGame)
       setGames((prev) =>
@@ -232,6 +233,7 @@ export default function App() {
       {screen === 'category' && activeGame && (
         <CategoryScreen
           usedWords={activeGame.usedWords}
+          initialSelection={activeGame.lastSelectedCategories || []}
           onStartGame={handleStartGame}
           onBackToDashboard={handleBackToDashboard}
         />

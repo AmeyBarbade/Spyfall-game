@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import Papa from 'papaparse'
 import { SHEET_CSV_URL } from '../config'
 
-export default function CategoryScreen({ usedWords = [], onStartGame, onBackToDashboard }) {
+export default function CategoryScreen({ usedWords = [], initialSelection = [], onStartGame, onBackToDashboard }) {
   const [rawCategories, setRawCategories] = useState({}) // all words from sheet
-  const [selectedCategories, setSelectedCategories] = useState([])
+  const [selectedCategories, setSelectedCategories] = useState(initialSelection)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -76,6 +76,15 @@ export default function CategoryScreen({ usedWords = [], onStartGame, onBackToDa
   const totalFreshWords = Object.values(categories).reduce((s, w) => s + w.length, 0)
   const allExhausted = !loading && totalRawWords > 0 && totalFreshWords === 0
 
+  // Prune any stale selections (categories that became empty after usedWords filtering)
+  useEffect(() => {
+    if (Object.keys(categories).length > 0) {
+      setSelectedCategories((prev) =>
+        prev.filter((cat) => cat in categories)
+      )
+    }
+  }, [categories])
+
   const toggleCategory = (cat) => {
     setSelectedCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
@@ -99,7 +108,7 @@ export default function CategoryScreen({ usedWords = [], onStartGame, onBackToDa
     const pool = selectedCategories.flatMap((cat) => categories[cat] || [])
     if (pool.length === 0) return
     const secretWord = pool[Math.floor(Math.random() * pool.length)]
-    onStartGame(secretWord)
+    onStartGame(secretWord, selectedCategories)
   }
 
   const totalWords = selectedCategories.reduce(
