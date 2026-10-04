@@ -41,6 +41,12 @@ export default function DashboardScreen({
           <p className="text-text-secondary text-sm tracking-widest uppercase font-medium">
             The Party Game
           </p>
+          <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-500/15 border border-purple-500/30 shadow-md">
+            <span className="text-xs text-text-secondary">Created by</span>
+            <span className="text-sm font-black tracking-wide text-white drop-shadow">
+              Amey Barbade
+            </span>
+          </div>
         </div>
 
         {/* Create New Game */}
