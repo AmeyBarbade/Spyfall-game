@@ -56,7 +56,14 @@ function parsePastedWords(text) {
   return words
 }
 
-export default function CategoryScreen({ usedWords = [], initialSelection = [], onStartGame, onBackToDashboard }) {
+export default function CategoryScreen({
+  usedWords = [],
+  initialSelection = [],
+  playerCount = 0,
+  onStartGame,
+  onBackToDashboard,
+  onEditPlayers,
+}) {
   const [rawCategories, setRawCategories] = useState({}) // all words from sheet
   const [customCategories, setCustomCategories] = useState(loadCustomCategories)
   const [selectedCategories, setSelectedCategories] = useState(initialSelection)
@@ -287,13 +294,31 @@ export default function CategoryScreen({ usedWords = [], initialSelection = [], 
       <div className="bg-glow-purple top-0 left-0 opacity-20" />
 
       <div className="relative z-10 w-full max-w-md mx-auto flex-1 flex flex-col">
-        {/* Back to Dashboard */}
-        <button
-          onClick={onBackToDashboard}
-          className="flex items-center gap-1.5 text-sm text-text-muted hover:text-purple-400 transition-colors mb-4 self-start"
-        >
-          <span>←</span> Dashboard
-        </button>
+        {/* Top Navigation Bar: Dashboard + Edit Names */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={onBackToDashboard}
+            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-purple-400 transition-colors"
+          >
+            <span>←</span> Dashboard
+          </button>
+
+          {onEditPlayers && (
+            <button
+              onClick={onEditPlayers}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:text-purple-200 text-xs font-semibold transition-all duration-200 active:scale-[0.96] shadow-sm shadow-purple-950/40"
+              title="Edit, add, or remove player names"
+            >
+              <span>✏️</span>
+              <span>Edit Names</span>
+              {playerCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-purple-500/25 border border-purple-500/40 text-[10px] font-bold text-purple-200">
+                  {playerCount}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
 
         {/* Header */}
         <div className="text-center mb-6 animate-fade-in-up">

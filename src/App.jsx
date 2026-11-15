@@ -110,24 +110,61 @@ export default function App() {
     setScreen('dashboard')
   }, [])
 
-  // ─── Player names entered → create & save game ─────────────────
+  // ─── Player names entered → create new or update active game ──
   const handlePlayerNamesComplete = useCallback(
     (names) => {
-      const newGame = {
-        id: crypto.randomUUID(),
-        gameName: pendingSetup.gameName,
-        players: names,
-        numImposters: pendingSetup.numImposters,
-        usedWords: [],
-        createdAt: new Date().toISOString(),
+      if (pendingSetup) {
+        // Creating a new game
+        const numImp = Math.min(
+          pendingSetup.numImposters,
+          Math.max(1, names.length - 1)
+        )
+        const newGame = {
+          id: crypto.randomUUID(),
+          gameName: pendingSetup.gameName,
+          players: names,
+          numImposters: numImp,
+          usedWords: [],
+          createdAt: new Date().toISOString(),
+        }
+        setGames((prev) => [...prev, newGame])
+        setActiveGame(newGame)
+        setPendingSetup(null)
+        setScreen('category')
+      } else if (activeGame) {
+        // Editing players for active game
+        const numImp = Math.min(
+          activeGame.numImposters,
+          Math.max(1, names.length - 1)
+        )
+        const updatedGame = {
+          ...activeGame,
+          players: names,
+          numImposters: numImp,
+        }
+        setActiveGame(updatedGame)
+        setGames((prev) =>
+          prev.map((g) => (g.id === updatedGame.id ? updatedGame : g))
+        )
+        setScreen('category')
       }
-      setGames((prev) => [...prev, newGame])
-      setActiveGame(newGame)
-      setPendingSetup(null)
-      setScreen('category')
     },
-    [pendingSetup]
+    [pendingSetup, activeGame]
   )
+
+  const handleEditPlayers = useCallback(() => {
+    setScreen('playerEntry')
+  }, [])
+
+  const handleBackFromPlayerEntry = useCallback(() => {
+    if (pendingSetup) {
+      setScreen('setup')
+    } else if (activeGame) {
+      setScreen('category')
+    } else {
+      setScreen('dashboard')
+    }
+  }, [pendingSetup, activeGame])
 
   // ─── Category: start game with the chosen secret word ──────────
   const handleStartGame = useCallback(
@@ -222,11 +259,13 @@ export default function App() {
         />
       )}
 
-      {screen === 'playerEntry' && pendingSetup && (
+      {screen === 'playerEntry' && (pendingSetup || activeGame) && (
         <PlayerEntryScreen
-          totalPlayers={pendingSetup.totalPlayers}
+          totalPlayers={pendingSetup ? pendingSetup.totalPlayers : activeGame.players.length}
+          initialNames={!pendingSetup && activeGame ? activeGame.players : []}
+          isEditing={!pendingSetup && !!activeGame}
           onNext={handlePlayerNamesComplete}
-          initialNames={[]}
+          onBack={handleBackFromPlayerEntry}
         />
       )}
 
@@ -234,8 +273,10 @@ export default function App() {
         <CategoryScreen
           usedWords={activeGame.usedWords}
           initialSelection={activeGame.lastSelectedCategories || []}
+          playerCount={activeGame.players.length}
           onStartGame={handleStartGame}
           onBackToDashboard={handleBackToDashboard}
+          onEditPlayers={handleEditPlayers}
         />
       )}
 
