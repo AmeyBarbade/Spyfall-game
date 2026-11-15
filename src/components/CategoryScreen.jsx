@@ -498,7 +498,7 @@ export default function CategoryScreen({ usedWords = [], initialSelection = [], 
                       if (newCatError) setNewCatError('')
                     }}
                     rows={6}
-                    placeholder={`Amey\nTanvi\nKunal\nAnushka`}
+                    placeholder={`Instagram\nNetflix\nSpotify\nYouTube`}
                     className="w-full px-4 py-2.5 rounded-xl bg-bg-secondary border border-border focus:border-purple-500 focus:outline-none text-text-primary placeholder:text-text-muted text-sm font-mono transition-colors resize-none leading-relaxed"
                   />
                   <p className="text-[11px] text-text-muted mt-1 leading-normal">
