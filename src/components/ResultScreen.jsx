@@ -2,10 +2,13 @@ export default function ResultScreen({
   votedPlayer,
   secretWord,
   imposters,
+  voteDetails = null,
+  isOnline = false,
+  isHost = true,
   onNextRound,
   onBackToDashboard,
 }) {
-  const isImposterCaught = votedPlayer.isImposter
+  const isImposterCaught = votedPlayer?.isImposter
   const imposterNames = imposters.map((p) => p.name)
 
   return (
@@ -59,10 +62,11 @@ export default function ResultScreen({
                 Civilians Win! 🎊
               </h2>
               <p className="text-text-secondary text-base">
+                By majority vote{voteDetails?.isTieBreaker ? ' in tie-breaker' : ''},{' '}
                 <span className="text-emerald-300 font-bold">
-                  {votedPlayer.name}
+                  {votedPlayer?.name}
                 </span>{' '}
-                was an Imposter!
+                was eliminated and was an <strong>Imposter</strong>!
               </p>
             </>
           ) : (
@@ -71,10 +75,11 @@ export default function ResultScreen({
                 Imposters Win! 😈
               </h2>
               <p className="text-text-secondary text-base">
+                By majority vote{voteDetails?.isTieBreaker ? ' in tie-breaker' : ''},{' '}
                 <span className="text-red-300 font-bold">
-                  {votedPlayer.name}
+                  {votedPlayer?.name}
                 </span>{' '}
-                was a Civilian!
+                was eliminated, but was an innocent <strong>Civilian</strong>!
               </p>
             </>
           )}
@@ -82,12 +87,12 @@ export default function ResultScreen({
 
         {/* Game Details Card */}
         <div
-          className="glass-card p-6 space-y-4 animate-fade-in-up mb-6"
+          className="glass-card p-6 space-y-4 animate-fade-in-up mb-6 border border-purple-500/30"
           style={{ animationDelay: '0.4s' }}
         >
           <div className="flex justify-between items-center py-2 border-b border-border/50">
             <span className="text-text-muted text-sm">Secret Word</span>
-            <span className="text-purple-400 font-bold text-lg">
+            <span className="text-purple-400 font-bold text-lg font-mono">
               {secretWord}
             </span>
           </div>
@@ -116,12 +121,22 @@ export default function ResultScreen({
           className="space-y-3 animate-fade-in-up"
           style={{ animationDelay: '0.6s' }}
         >
-          <button
-            onClick={onNextRound}
-            className="btn-primary w-full py-4 text-lg"
-          >
-            🔄 Next Round
-          </button>
+          {!isOnline || isHost ? (
+            <button
+              onClick={onNextRound}
+              className="btn-primary w-full py-4 text-lg font-bold shadow-lg shadow-purple-950/40"
+            >
+              🔄 Next Round
+            </button>
+          ) : (
+            <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center animate-pulse">
+              <span className="text-purple-300 font-semibold text-sm flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                Waiting for Host to start the next round...
+              </span>
+            </div>
+          )}
+
           <button
             onClick={onBackToDashboard}
             className="w-full py-3 rounded-xl text-sm font-medium text-text-muted hover:text-purple-400 border border-border hover:border-purple-500/30 transition-all"

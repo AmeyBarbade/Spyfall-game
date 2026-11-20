@@ -9,27 +9,14 @@ import OnlineRevealScreen from './components/OnlineRevealScreen'
 import RevealScreen from './components/RevealScreen'
 import SpeakerScreen from './components/SpeakerScreen'
 import VotingScreen from './components/VotingScreen'
+import OnlineVotingScreen from './components/OnlineVotingScreen'
+import TieBreakerScreen from './components/TieBreakerScreen'
 import ResultScreen from './components/ResultScreen'
 import {
   subscribeToRoom,
   publishRoomEvent,
   closeRoomConnection,
 } from './services/roomSync'
-
-/*
-  Game Screens:
-  0. dashboard    → saved games + create new (local & online)
-  1. setup        → game name + room code (if online) + total players + imposters count
-  2. playerEntry  → enter names (in online mode: only Player 1 (You))
-  3. category     → pick categories (filters usedWords)
-  4. lobby        → online lobby (waiting for players, live player counter, code showcase)
-  5. join         → friend join screen (enter your name when clicking invite link)
-  6. onlineReveal → single-card reveal for online multiplayer (tap to reveal role)
-  7. reveal       → pass-and-play word reveal (for offline/local mode only)
-  8. speaker      → announce who speaks first (weighted random)
-  9. voting       → vote for the imposter
-  10. result      → show who won → next round or dashboard
-*/
 
 // ─── localStorage helpers ───────────────────────────────────────────
 const STORAGE_KEY = 'imposter_games'
@@ -99,9 +86,17 @@ export default function App() {
   const [secretWord, setSecretWord] = useState('')
   const [startingPlayer, setStartingPlayer] = useState(null)
   const [votedPlayer, setVotedPlayer] = useState(null)
+  const [voteDetails, setVoteDetails] = useState(null)
+
+  // Online Voting & Tie-Breaker state
+  const [votesMap, setVotesMap] = useState({})
+  const [tiedCandidates, setTiedCandidates] = useState([])
+  const [tieVotesMap, setTieVotesMap] = useState({})
+  const [tieRoundNumber, setTieRoundNumber] = useState(1)
 
   const isHost = !joinedPlayerName
   const currentRoomCode = activeGame?.roomCode || joinedRoomCode
+  const myPlayerName = joinedPlayerName || activeGame?.players?.[0] || 'Host'
 
   // Detect URL parameter ?room=CODE or ?join=CODE on mount
   useEffect(() => {
@@ -112,7 +107,6 @@ export default function App() {
         const cleanRoom = room.trim().toUpperCase()
         setInitialJoinCode(cleanRoom)
         setJoinedRoomCode(cleanRoom)
-        // Directly open the JoinScreen!
         setScreen('join')
       }
     } catch {
@@ -125,6 +119,51 @@ export default function App() {
     persistGames(games)
   }, [games])
 
+  // Helper: Tally votes and determine winner or tie
+  const evaluateVotes = useCallback(
+    (currentVotes) => {
+      const counts = {}
+      players.forEach((p) => {
+        counts[p.name] = 0
+      })
+      Object.values(currentVotes).forEach((target) => {
+        counts[target] = (counts[target] || 0) + 1
+      })
+
+      const maxVotes = Math.max(...Object.values(counts))
+      if (maxVotes === 0) return
+
+      const leaders = Object.keys(counts).filter((name) => counts[name] === maxVotes)
+
+      if (leaders.length === 1) {
+        // Clear majority winner!
+        const winnerName = leaders[0]
+        const targetPlayer = players.find((p) => p.name === winnerName)
+        const details = { count: maxVotes, isTieBreaker: false }
+        publishRoomEvent(currentRoomCode, {
+          type: 'SHOW_RESULT',
+          votedPlayer: targetPlayer,
+          voteDetails: details,
+        })
+        setVotedPlayer(targetPlayer)
+        setVoteDetails(details)
+        setScreen('result')
+      } else {
+        // TIE! Proceed to tie-breaker
+        publishRoomEvent(currentRoomCode, {
+          type: 'START_TIE_BREAKER',
+          tiedCandidates: leaders,
+          round: 1,
+        })
+        setTiedCandidates(leaders)
+        setTieVotesMap({})
+        setTieRoundNumber(1)
+        setScreen('tieBreaker')
+      }
+    },
+    [players, currentRoomCode]
+  )
+
   // In-game global event listener for all connected players
   useEffect(() => {
     if (!currentRoomCode) return
@@ -135,9 +174,41 @@ export default function App() {
           setStartingPlayer(data.startingPlayer)
           setScreen('speaker')
         } else if (data.type === 'START_VOTING') {
+          setVotesMap({})
+          setTiedCandidates([])
+          setTieVotesMap({})
+          setTieRoundNumber(1)
           setScreen('voting')
+        } else if (data.type === 'VOTE_CAST') {
+          if (data.voter && data.target) {
+            setVotesMap((prev) => {
+              const updated = { ...prev, [data.voter]: data.target }
+              // If Host and all players have voted, evaluate majority
+              if (isHost && Object.keys(updated).length >= players.length) {
+                setTimeout(() => evaluateVotes(updated), 500)
+              }
+              return updated
+            })
+          }
+        } else if (data.type === 'START_TIE_BREAKER') {
+          setTiedCandidates(data.tiedCandidates || [])
+          setTieVotesMap({})
+          setTieRoundNumber(data.round || 1)
+          setScreen('tieBreaker')
+        } else if (data.type === 'TIE_VOTE_CAST') {
+          if (data.voter && data.target) {
+            setTieVotesMap((prev) => ({
+              ...prev,
+              [data.voter]: data.target,
+            }))
+          }
+        } else if (data.type === 'RESET_TIE_BREAKER') {
+          setTiedCandidates(data.tiedCandidates || [])
+          setTieVotesMap({})
+          setTieRoundNumber(data.round || 1)
         } else if (data.type === 'SHOW_RESULT' && data.votedPlayer) {
           setVotedPlayer(data.votedPlayer)
+          setVoteDetails(data.voteDetails || null)
           setScreen('result')
         } else if (data.type === 'NEXT_ROUND') {
           if (!isHost) {
@@ -150,7 +221,7 @@ export default function App() {
     return () => {
       unsubscribe()
     }
-  }, [currentRoomCode, isHost])
+  }, [currentRoomCode, isHost, players, evaluateVotes])
 
   // ─── Dashboard handlers ─────────────────────────────────────────
   const handleCreateNew = useCallback(() => {
@@ -224,7 +295,7 @@ export default function App() {
         const newGame = {
           id: crypto.randomUUID(),
           gameName: pendingSetup.gameName,
-          players: names, // In online mode, names is [hostName]
+          players: names,
           totalPlayers: pendingSetup.totalPlayers,
           numImposters: numImp,
           roomCode: pendingSetup.roomCode || '',
@@ -237,7 +308,6 @@ export default function App() {
         setPendingSetup(null)
         setScreen('category')
       } else if (activeGame) {
-        // Editing players for active game
         const numImp = Math.min(
           activeGame.numImposters,
           Math.max(1, names.length - 1)
@@ -276,7 +346,6 @@ export default function App() {
     (word, selectedCats) => {
       setSecretWord(word)
 
-      // Persist the used word + last selected categories into the active game
       const updatedGame = {
         ...activeGame,
         usedWords: [...(activeGame?.usedWords || []), word],
@@ -289,13 +358,12 @@ export default function App() {
         prev.map((g) => (g.id === updatedGame.id ? updatedGame : g))
       )
 
-      // If online mode, transition to the Lobby screen as requested!
       if (activeGame?.isOnline || isOnlineMode) {
         setScreen('lobby')
         return
       }
 
-      // If local mode, assign imposter roles randomly & proceed to Reveal
+      // Offline mode: assign imposter roles randomly & proceed to Reveal
       const names = activeGame.players
       const numImp = activeGame.numImposters
       const indices = Array.from({ length: names.length }, (_, i) => i)
@@ -321,7 +389,6 @@ export default function App() {
       setPlayers(gamePlayersWithRoles)
       setSecretWord(word)
 
-      // Find the Host's role card!
       const hostName = activeGame?.players?.[0] || 'Host'
       const hostAssignment = gamePlayersWithRoles.find(
         (p) => p.name.trim().toLowerCase() === hostName.trim().toLowerCase()
@@ -332,7 +399,6 @@ export default function App() {
         category: activeGame?.selectedCategories?.[0] || startPayload?.category || 'General',
       }
       setCurrentRole(hostRole)
-      // Host gets the exact same single-card reveal screen as other players!
       setScreen('onlineReveal')
     },
     [activeGame]
@@ -376,32 +442,103 @@ export default function App() {
       publishRoomEvent(currentRoomCode, {
         type: 'START_VOTING',
       })
+      setVotesMap({})
+      setTiedCandidates([])
+      setTieVotesMap({})
+      setTieRoundNumber(1)
     }
     setScreen('voting')
   }, [isOnlineMode, currentRoomCode])
 
-  // ─── Vote cast → Result ────────────────────────────────────────
-  const handleVote = useCallback(
-    (player) => {
-      setVotedPlayer(player)
-      if (isOnlineMode) {
+  // ─── Online Voting Handlers ────────────────────────────────────
+  const handleCastVote = useCallback(
+    (candidateName) => {
+      setVotesMap((prev) => {
+        const updated = { ...prev, [myPlayerName]: candidateName }
         publishRoomEvent(currentRoomCode, {
-          type: 'SHOW_RESULT',
-          votedPlayer: player,
+          type: 'VOTE_CAST',
+          voter: myPlayerName,
+          target: candidateName,
         })
-      }
-      setScreen('result')
+        if (isHost && Object.keys(updated).length >= players.length) {
+          setTimeout(() => evaluateVotes(updated), 500)
+        }
+        return updated
+      })
     },
-    [isOnlineMode, currentRoomCode]
+    [myPlayerName, currentRoomCode, isHost, players.length, evaluateVotes]
   )
 
-  // ─── Next Round: keep game + usedWords, go to category ─────────
+  // Host manual tally trigger if someone disconnected
+  const handleManualTally = useCallback(() => {
+    evaluateVotes(votesMap)
+  }, [evaluateVotes, votesMap])
+
+  // ─── Tie-Breaker Handlers ──────────────────────────────────────
+  const handleCastTieVote = useCallback(
+    (candidateName) => {
+      setTieVotesMap((prev) => {
+        const updated = { ...prev, [myPlayerName]: candidateName }
+        publishRoomEvent(currentRoomCode, {
+          type: 'TIE_VOTE_CAST',
+          voter: myPlayerName,
+          target: candidateName,
+        })
+        return updated
+      })
+    },
+    [myPlayerName, currentRoomCode]
+  )
+
+  const handleResolveTieBreaker = useCallback(
+    (targetPlayer, votesWon) => {
+      const details = { count: votesWon, isTieBreaker: true }
+      publishRoomEvent(currentRoomCode, {
+        type: 'SHOW_RESULT',
+        votedPlayer: targetPlayer,
+        voteDetails: details,
+      })
+      setVotedPlayer(targetPlayer)
+      setVoteDetails(details)
+      setScreen('result')
+    },
+    [currentRoomCode]
+  )
+
+  const handleResetTieBreaker = useCallback(
+    (topCandidates) => {
+      const nextRound = tieRoundNumber + 1
+      publishRoomEvent(currentRoomCode, {
+        type: 'RESET_TIE_BREAKER',
+        tiedCandidates: topCandidates,
+        round: nextRound,
+      })
+      setTiedCandidates(topCandidates)
+      setTieVotesMap({})
+      setTieRoundNumber(nextRound)
+    },
+    [currentRoomCode, tieRoundNumber]
+  )
+
+  // Offline vote handler
+  const handleVoteOffline = useCallback((player) => {
+    setVotedPlayer(player)
+    setVoteDetails(null)
+    setScreen('result')
+  }, [])
+
+  // ─── Next Round ────────────────────────────────────────────────
   const handleNextRound = useCallback(() => {
     setSecretWord('')
     setPlayers([])
     setStartingPlayer(null)
     setVotedPlayer(null)
+    setVoteDetails(null)
     setCurrentRole(null)
+    setVotesMap({})
+    setTiedCandidates([])
+    setTieVotesMap({})
+    setTieRoundNumber(1)
 
     if (isOnlineMode) {
       publishRoomEvent(currentRoomCode, {
@@ -417,7 +554,7 @@ export default function App() {
     }
   }, [isOnlineMode, currentRoomCode, isHost])
 
-  // ─── Back to Dashboard: reset everything ───────────────────────
+  // ─── Back to Dashboard ─────────────────────────────────────────
   const handleBackToDashboard = useCallback(() => {
     if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname)
@@ -433,6 +570,11 @@ export default function App() {
     setPlayers([])
     setStartingPlayer(null)
     setVotedPlayer(null)
+    setVoteDetails(null)
+    setVotesMap({})
+    setTiedCandidates([])
+    setTieVotesMap({})
+    setTieRoundNumber(1)
     setScreen('dashboard')
   }, [])
 
@@ -539,8 +681,37 @@ export default function App() {
         />
       )}
 
+      {/* Voting Screen: Online Voting with live progress or Offline Voting */}
       {screen === 'voting' && (
-        <VotingScreen players={players} onVote={handleVote} />
+        isOnlineMode ? (
+          <OnlineVotingScreen
+            players={players}
+            myPlayerName={myPlayerName}
+            isHost={isHost}
+            roomCode={currentRoomCode}
+            votesMap={votesMap}
+            onCastVote={handleCastVote}
+            onTallyVotes={handleManualTally}
+          />
+        ) : (
+          <VotingScreen players={players} onVote={handleVoteOffline} />
+        )
+      )}
+
+      {/* Tie-Breaker Screen: Runoff between tied candidates with live voter names on buttons */}
+      {screen === 'tieBreaker' && (
+        <TieBreakerScreen
+          tiedCandidates={tiedCandidates}
+          allPlayers={players}
+          myPlayerName={myPlayerName}
+          roomCode={currentRoomCode}
+          tieVotesMap={tieVotesMap}
+          isHost={isHost}
+          roundNumber={tieRoundNumber}
+          onCastTieVote={handleCastTieVote}
+          onResolveTieBreaker={handleResolveTieBreaker}
+          onResetTieBreaker={handleResetTieBreaker}
+        />
       )}
 
       {screen === 'result' && (
@@ -548,6 +719,9 @@ export default function App() {
           votedPlayer={votedPlayer}
           secretWord={secretWord}
           imposters={imposters}
+          voteDetails={voteDetails}
+          isOnline={isOnlineMode}
+          isHost={isHost}
           onNextRound={handleNextRound}
           onBackToDashboard={handleBackToDashboard}
         />
