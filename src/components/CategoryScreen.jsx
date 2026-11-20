@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import Papa from 'papaparse'
+import { pickUnbiasedWord } from '../services/randomEngine'
 import { SHEET_CSV_URL } from '../config'
 
 const CUSTOM_CATEGORIES_KEY = 'imposter_custom_categories'
@@ -265,7 +266,7 @@ export default function CategoryScreen({
     // Gather fresh words from selected categories only
     const pool = selectedCategories.flatMap((cat) => categories[cat] || [])
     if (pool.length === 0) return
-    const secretWord = pool[Math.floor(Math.random() * pool.length)]
+    const secretWord = pickUnbiasedWord(pool, usedWords)
     onStartGame(secretWord, selectedCategories)
   }
 

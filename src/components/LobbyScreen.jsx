@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { subscribeToRoom, publishRoomEvent, publishRoomState } from '../services/roomSync'
+import { selectFairImposters } from '../services/randomEngine'
 
 export default function LobbyScreen({
   activeGame,
   isHost = true,
   myPlayerName = '',
+  recentImposterHistory = [],
   onStartGame,
   onGameStartedByHost,
   onBackToDashboard,
@@ -158,18 +160,12 @@ export default function LobbyScreen({
     const playerNames = players.map((p) => p.name)
     const code = (roomCode || 'BARBADE').toUpperCase()
 
-    // Assign roles randomly
-    const indices = Array.from({ length: playerNames.length }, (_, i) => i)
-    for (let i = indices.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[indices[i], indices[j]] = [indices[j], indices[i]]
-    }
-    const imposterIndices = new Set(indices.slice(0, numImposters))
-
-    const gamePlayersWithRoles = playerNames.map((name, i) => ({
-      name,
-      isImposter: imposterIndices.has(i),
-    }))
+    // Assign roles fairly using Cryptographic Anti-Streak Engine
+    const gamePlayersWithRoles = selectFairImposters(
+      playerNames,
+      numImposters,
+      recentImposterHistory
+    )
 
     const startPayload = {
       type: 'GAME_START',

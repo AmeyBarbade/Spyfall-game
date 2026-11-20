@@ -17,6 +17,10 @@ import {
   publishRoomEvent,
   closeRoomConnection,
 } from './services/roomSync'
+import {
+  selectFairImposters,
+  selectStartingSpeaker,
+} from './services/randomEngine'
 
 // ─── localStorage helpers ───────────────────────────────────────────
 const STORAGE_KEY = 'imposter_games'
@@ -92,8 +96,10 @@ export default function App() {
   // Online Voting & Tie-Breaker state
   const [votesMap, setVotesMap] = useState({})
   const [tiedCandidates, setTiedCandidates] = useState([])
+  const [lockedEliminated, setLockedEliminated] = useState([])
   const [tieVotesMap, setTieVotesMap] = useState({})
   const [tieRoundNumber, setTieRoundNumber] = useState(1)
+  const [recentImposterHistory, setRecentImposterHistory] = useState([])
 
   const isHost = !joinedPlayerName
   const currentRoomCode = activeGame?.roomCode || joinedRoomCode
@@ -134,50 +140,114 @@ export default function App() {
 
       if (votesCount === 0) return
 
+      const numToEliminate = Math.min(
+        activeGame?.numImposters || 1,
+        Math.max(1, activeList.length - 1)
+      )
+
       const counts = {}
       activeList.forEach((p) => {
         counts[p.name] = 0
       })
-      Object.values(currentVotes).forEach((target) => {
-        if (counts[target] !== undefined) {
-          counts[target] = counts[target] + 1
-        } else {
-          counts[target] = 1
-        }
+      Object.values(currentVotes).forEach((val) => {
+        const targets = Array.isArray(val) ? val : [val]
+        targets.forEach((target) => {
+          if (target && counts[target] !== undefined) {
+            counts[target] = counts[target] + 1
+          }
+        })
       })
 
-      const maxVotes = Math.max(...Object.values(counts))
-      if (maxVotes === 0) return
+      if (numToEliminate <= 1) {
+        // Single imposter mode
+        const maxVotes = Math.max(...Object.values(counts))
+        if (maxVotes === 0) return
 
-      const leaders = Object.keys(counts).filter((name) => counts[name] === maxVotes)
+        const leaders = Object.keys(counts).filter((name) => counts[name] === maxVotes)
 
-      if (leaders.length === 1) {
-        // Clear majority winner!
-        const winnerName = leaders[0]
-        const targetPlayer = activeList.find((p) => p.name === winnerName) || { name: winnerName, isImposter: false }
-        const details = { count: maxVotes, isTieBreaker: false }
-        publishRoomEvent(currentRoomCode, {
-          type: 'SHOW_RESULT',
-          votedPlayer: targetPlayer,
-          voteDetails: details,
-        })
-        setVotedPlayer(targetPlayer)
-        setVoteDetails(details)
-        setScreen('result')
+        if (leaders.length === 1) {
+          // Clear majority winner!
+          const winnerName = leaders[0]
+          const targetPlayer = activeList.find((p) => p.name === winnerName) || { name: winnerName, isImposter: false }
+          const details = { count: maxVotes, isTieBreaker: false }
+          publishRoomEvent(currentRoomCode, {
+            type: 'SHOW_RESULT',
+            votedPlayer: targetPlayer,
+            voteDetails: details,
+          })
+          setVotedPlayer(targetPlayer)
+          setVoteDetails(details)
+          setScreen('result')
+        } else {
+          // TIE! Proceed to tie-breaker
+          setLockedEliminated([])
+          publishRoomEvent(currentRoomCode, {
+            type: 'START_TIE_BREAKER',
+            tiedCandidates: leaders,
+            round: 1,
+            lockedEliminated: [],
+          })
+          setTiedCandidates(leaders)
+          setTieVotesMap({})
+          setTieRoundNumber(1)
+          setScreen('tieBreaker')
+        }
       } else {
-        // TIE! Proceed to tie-breaker
-        publishRoomEvent(currentRoomCode, {
-          type: 'START_TIE_BREAKER',
-          tiedCandidates: leaders,
-          round: 1,
-        })
-        setTiedCandidates(leaders)
-        setTieVotesMap({})
-        setTieRoundNumber(1)
-        setScreen('tieBreaker')
+        // 2 Imposters mode: We need to eliminate top 2 suspects
+        const sortedNames = Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+        const v0 = counts[sortedNames[0]] || 0
+        const v1 = counts[sortedNames[1]] || 0
+        const v2 = counts[sortedNames[2]] || 0
+
+        if (v0 === 0) return
+
+        if (v1 > v2) {
+          // Clean separation: top 2 candidates clearly exceed the rest!
+          const eliminatedTargets = [sortedNames[0], sortedNames[1]].map(
+            (name) => activeList.find((p) => p.name === name) || { name, isImposter: false }
+          )
+          const details = { count: `${v0} & ${v1}`, isTieBreaker: false }
+          publishRoomEvent(currentRoomCode, {
+            type: 'SHOW_RESULT',
+            votedPlayer: eliminatedTargets,
+            voteDetails: details,
+          })
+          setVotedPlayer(eliminatedTargets)
+          setVoteDetails(details)
+          setScreen('result')
+        } else if (v0 > v1 && v1 === v2) {
+          // 1st place is definitely eliminated! Tie-breaker for 2nd place slot
+          const lockedPlayer = activeList.find((p) => p.name === sortedNames[0]) || { name: sortedNames[0], isImposter: false }
+          const tiedForSecond = sortedNames.filter((name) => counts[name] === v1)
+          setLockedEliminated([lockedPlayer])
+          publishRoomEvent(currentRoomCode, {
+            type: 'START_TIE_BREAKER',
+            tiedCandidates: tiedForSecond,
+            round: 1,
+            lockedEliminated: [lockedPlayer],
+          })
+          setTiedCandidates(tiedForSecond)
+          setTieVotesMap({})
+          setTieRoundNumber(1)
+          setScreen('tieBreaker')
+        } else {
+          // 3 or more tied for top spots (v0 === v1 === v2)
+          const tiedForTop = sortedNames.filter((name) => counts[name] === v0)
+          setLockedEliminated([])
+          publishRoomEvent(currentRoomCode, {
+            type: 'START_TIE_BREAKER',
+            tiedCandidates: tiedForTop,
+            round: 1,
+            lockedEliminated: [],
+          })
+          setTiedCandidates(tiedForTop)
+          setTieVotesMap({})
+          setTieRoundNumber(1)
+          setScreen('tieBreaker')
+        }
       }
     },
-    [players, currentRoomCode]
+    [players, currentRoomCode, activeGame]
   )
 
   // Helper: Tally tie-breaker votes
@@ -210,13 +280,14 @@ export default function App() {
         // Clear majority in tie-breaker!
         const winnerName = topCandidates[0]
         const targetPlayer = activeList.find((p) => p.name === winnerName) || { name: winnerName, isImposter: false }
+        const finalEliminated = lockedEliminated.length > 0 ? [...lockedEliminated, targetPlayer] : targetPlayer
         const details = { count: maxVotes, isTieBreaker: true }
         publishRoomEvent(currentRoomCode, {
           type: 'SHOW_RESULT',
-          votedPlayer: targetPlayer,
+          votedPlayer: finalEliminated,
           voteDetails: details,
         })
-        setVotedPlayer(targetPlayer)
+        setVotedPlayer(finalEliminated)
         setVoteDetails(details)
         setScreen('result')
       } else {
@@ -232,7 +303,7 @@ export default function App() {
         setTieRoundNumber(nextRound)
       }
     },
-    [players, currentRoomCode, tieRoundNumber]
+    [players, currentRoomCode, tieRoundNumber, lockedEliminated]
   )
 
   // In-game global event listener for all connected players
@@ -247,13 +318,15 @@ export default function App() {
         } else if (data.type === 'START_VOTING') {
           setVotesMap({})
           setTiedCandidates([])
+          setLockedEliminated([])
           setTieVotesMap({})
           setTieRoundNumber(1)
           setScreen('voting')
         } else if (data.type === 'VOTE_CAST') {
-          if (data.voter && data.target) {
+          if (data.voter && (data.target || data.targets)) {
+            const voteVal = data.targets || data.target
             setVotesMap((prev) => {
-              const updated = { ...prev, [data.voter]: data.target }
+              const updated = { ...prev, [data.voter]: voteVal }
               const totalNeeded = activePlayersRef.current.length > 0 ? activePlayersRef.current.length : players.length
 
               // ONLY evaluate if Host AND all players have voted!
@@ -265,6 +338,10 @@ export default function App() {
           }
         } else if (data.type === 'START_TIE_BREAKER') {
           setTiedCandidates(data.tiedCandidates || [])
+          setLockedEliminated(data.lockedEliminated || [])
+          setTieVotesMap({})
+          setTieRoundNumber(data.round || 1)
+          setScreen('tieBreaker')
           setTieVotesMap({})
           setTieRoundNumber(data.round || 1)
           setScreen('tieBreaker')
@@ -442,25 +519,22 @@ export default function App() {
         return
       }
 
-      // Offline mode: assign imposter roles randomly & proceed to Reveal
+      // Offline mode: assign imposter roles using Cryptographic Anti-Streak Engine
       const names = activeGame.players
       const numImp = activeGame.numImposters
-      const indices = Array.from({ length: names.length }, (_, i) => i)
-      const shuffled = shuffleArray(indices)
-      const imposterIndices = new Set(shuffled.slice(0, numImp))
+      const gamePlayers = selectFairImposters(names, numImp, recentImposterHistory)
 
-      const gamePlayers = shuffleArray(
-        names.map((name, i) => ({
-          name,
-          isImposter: imposterIndices.has(i),
-        }))
-      )
+      // Record imposters to anti-streak history
+      const chosenImposters = gamePlayers.filter((p) => p.isImposter).map((p) => p.name)
+      if (chosenImposters.length > 0) {
+        setRecentImposterHistory((prev) => [...prev, chosenImposters].slice(-5))
+      }
 
       activePlayersRef.current = gamePlayers
       setPlayers(gamePlayers)
       setScreen('reveal')
     },
-    [activeGame, isOnlineMode]
+    [activeGame, isOnlineMode, recentImposterHistory]
   )
 
   // ─── Lobby: Host starts the game once players join ─────────────
@@ -469,6 +543,11 @@ export default function App() {
       activePlayersRef.current = gamePlayersWithRoles
       setPlayers(gamePlayersWithRoles)
       setSecretWord(word)
+
+      const chosenImposters = gamePlayersWithRoles.filter((p) => p.isImposter).map((p) => p.name)
+      if (chosenImposters.length > 0) {
+        setRecentImposterHistory((prev) => [...prev, chosenImposters].slice(-5))
+      }
 
       const hostName = activeGame?.players?.[0] || 'Host'
       const hostAssignment = gamePlayersWithRoles.find(
@@ -510,7 +589,7 @@ export default function App() {
   // ─── Online Reveal: Host clicks "Start Discussion" ─────────────
   const handleStartDiscussion = useCallback(() => {
     const activeList = activePlayersRef.current.length > 0 ? activePlayersRef.current : players
-    const speaker = pickStartingSpeaker(activeList)
+    const speaker = selectStartingSpeaker(activeList)
     setStartingPlayer(speaker)
     publishRoomEvent(currentRoomCode, {
       type: 'START_DISCUSSION',
@@ -527,6 +606,7 @@ export default function App() {
       })
       setVotesMap({})
       setTiedCandidates([])
+      setLockedEliminated([])
       setTieVotesMap({})
       setTieRoundNumber(1)
     }
@@ -535,13 +615,14 @@ export default function App() {
 
   // ─── Online Voting Handlers ────────────────────────────────────
   const handleCastVote = useCallback(
-    (candidateName) => {
+    (candidateSelection) => {
       setVotesMap((prev) => {
-        const updated = { ...prev, [myPlayerName]: candidateName }
+        const updated = { ...prev, [myPlayerName]: candidateSelection }
         publishRoomEvent(currentRoomCode, {
           type: 'VOTE_CAST',
           voter: myPlayerName,
-          target: candidateName,
+          targets: Array.isArray(candidateSelection) ? candidateSelection : [candidateSelection],
+          target: Array.isArray(candidateSelection) ? candidateSelection[0] : candidateSelection,
         })
         const totalNeeded = activePlayersRef.current.length > 0 ? activePlayersRef.current.length : players.length
 
@@ -584,17 +665,18 @@ export default function App() {
 
   const handleResolveTieBreaker = useCallback(
     (targetPlayer, votesWon) => {
+      const finalEliminated = lockedEliminated.length > 0 ? [...lockedEliminated, targetPlayer] : targetPlayer
       const details = { count: votesWon, isTieBreaker: true }
       publishRoomEvent(currentRoomCode, {
         type: 'SHOW_RESULT',
-        votedPlayer: targetPlayer,
+        votedPlayer: finalEliminated,
         voteDetails: details,
       })
-      setVotedPlayer(targetPlayer)
+      setVotedPlayer(finalEliminated)
       setVoteDetails(details)
       setScreen('result')
     },
-    [currentRoomCode]
+    [currentRoomCode, lockedEliminated]
   )
 
   const handleResetTieBreaker = useCallback(
@@ -612,9 +694,9 @@ export default function App() {
     [currentRoomCode, tieRoundNumber]
   )
 
-  // Offline vote handler
-  const handleVoteOffline = useCallback((player) => {
-    setVotedPlayer(player)
+  // Offline vote handler (supports single player or array of 2 players)
+  const handleVoteOffline = useCallback((playerOrPlayers) => {
+    setVotedPlayer(playerOrPlayers)
     setVoteDetails(null)
     setScreen('result')
   }, [])
@@ -630,6 +712,7 @@ export default function App() {
     setCurrentRole(null)
     setVotesMap({})
     setTiedCandidates([])
+    setLockedEliminated([])
     setTieVotesMap({})
     setTieRoundNumber(1)
 
@@ -737,6 +820,7 @@ export default function App() {
           activeGame={activeGame}
           isHost={isHost}
           myPlayerName={joinedPlayerName}
+          recentImposterHistory={recentImposterHistory}
           onStartGame={handleLobbyStartGame}
           onGameStartedByHost={handleGameStartedByHost}
           onBackToDashboard={handleBackToDashboard}
@@ -781,6 +865,7 @@ export default function App() {
           <OnlineVotingScreen
             players={players}
             myPlayerName={myPlayerName}
+            numImposters={activeGame?.numImposters || 1}
             isHost={isHost}
             roomCode={currentRoomCode}
             votesMap={votesMap}
@@ -788,7 +873,11 @@ export default function App() {
             onTallyVotes={handleManualTally}
           />
         ) : (
-          <VotingScreen players={players} onVote={handleVoteOffline} />
+          <VotingScreen
+            players={players}
+            numImposters={activeGame?.numImposters || 1}
+            onVote={handleVoteOffline}
+          />
         )
       )}
 

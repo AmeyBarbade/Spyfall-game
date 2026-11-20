@@ -18,6 +18,9 @@ export default function TieBreakerScreen({
   const myCurrentVote = tieVotesMap[myPlayerName]
 
   const handleVoteCandidate = (candidateName) => {
+    if (candidateName.trim().toLowerCase() === myPlayerName.trim().toLowerCase()) {
+      return // Self-voting is strictly disallowed
+    }
     onCastTieVote(candidateName)
   }
 
@@ -110,16 +113,19 @@ export default function TieBreakerScreen({
             {tiedCandidates.map((candidateName) => {
               const voters = votersPerCandidate[candidateName] || []
               const isMyVote = myCurrentVote === candidateName
+              const isMySelf = candidateName.trim().toLowerCase() === myPlayerName.trim().toLowerCase()
               const voteCount = voters.length
 
               return (
                 <div
                   key={candidateName}
-                  onClick={() => handleVoteCandidate(candidateName)}
-                  className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer relative overflow-hidden ${
-                    isMyVote
-                      ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border-purple-400 shadow-xl shadow-purple-950/60 ring-2 ring-purple-500/40'
-                      : 'glass-card hover:bg-bg-card-hover hover:border-purple-500/30'
+                  onClick={() => !isMySelf && handleVoteCandidate(candidateName)}
+                  className={`p-4 rounded-2xl border transition-all duration-200 relative overflow-hidden ${
+                    isMySelf
+                      ? 'glass-card-subtle opacity-75 border-border/60 cursor-not-allowed'
+                      : isMyVote
+                      ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border-purple-400 shadow-xl shadow-purple-950/60 ring-2 ring-purple-500/40 cursor-pointer'
+                      : 'glass-card hover:bg-bg-card-hover hover:border-purple-500/30 cursor-pointer'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -130,14 +136,18 @@ export default function TieBreakerScreen({
                       <div>
                         <h3 className="text-lg font-black text-white flex items-center gap-2">
                           {candidateName}
-                          {candidateName.trim().toLowerCase() === myPlayerName.trim().toLowerCase() && (
-                            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                          {isMySelf && (
+                            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
                               You
                             </span>
                           )}
                         </h3>
                         <p className="text-xs text-text-muted">
-                          {isMyVote ? 'Your current vote ✓ (Tap other to change)' : 'Tap to vote for this player'}
+                          {isMySelf
+                            ? '🚫 You cannot vote for yourself'
+                            : isMyVote
+                            ? 'Your current vote ✓ (Tap other to change)'
+                            : 'Tap to vote for this player'}
                         </p>
                       </div>
                     </div>

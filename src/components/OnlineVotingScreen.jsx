@@ -3,39 +3,65 @@ import { useState, useEffect } from 'react'
 export default function OnlineVotingScreen({
   players = [],
   myPlayerName = '',
+  numImposters = 1,
   isHost = false,
   roomCode = '',
   votesMap = {},
   onCastVote,
   onTallyVotes,
 }) {
-  const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const [selectedCandidates, setSelectedCandidates] = useState([])
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [showForceConfirm, setShowForceConfirm] = useState(false)
+
+  // Filter out the player themselves so players CANNOT vote for themselves
+  const votingCandidates = players.filter(
+    (p) => p.name.trim().toLowerCase() !== myPlayerName.trim().toLowerCase()
+  )
+
+  const numToSelect = Math.min(
+    Math.max(1, numImposters),
+    Math.max(1, votingCandidates.length)
+  )
 
   const myVote = votesMap[myPlayerName]
 
   useEffect(() => {
     if (myVote) {
       setHasSubmitted(true)
-      setSelectedCandidate(myVote)
+      const normalized = Array.isArray(myVote) ? myVote : [myVote]
+      setSelectedCandidates(normalized)
     }
   }, [myVote])
 
-  const handleSelect = (player) => {
+  const handleToggleCandidate = (candidateName) => {
     if (hasSubmitted) return
-    setSelectedCandidate(player.name)
+
+    setSelectedCandidates((prev) => {
+      if (prev.includes(candidateName)) {
+        return prev.filter((name) => name !== candidateName)
+      }
+      if (numToSelect === 1) {
+        return [candidateName]
+      }
+      if (prev.length < numToSelect) {
+        return [...prev, candidateName]
+      }
+      // Replace oldest selection
+      return [...prev.slice(1), candidateName]
+    })
   }
 
   const handleSubmitVote = () => {
-    if (!selectedCandidate || hasSubmitted) return
+    if (selectedCandidates.length !== numToSelect || hasSubmitted) return
     setHasSubmitted(true)
-    onCastVote(selectedCandidate)
+    onCastVote(numToSelect === 1 ? selectedCandidates[0] : selectedCandidates)
   }
 
   const totalPlayers = players.length
   const votesSubmittedCount = Object.keys(votesMap).length
   const allVoted = totalPlayers > 1 && votesSubmittedCount >= totalPlayers
+  const isReadyToSubmit = selectedCandidates.length === numToSelect
 
   return (
     <div className="flex flex-col min-h-dvh px-5 py-8 relative">
@@ -51,7 +77,13 @@ export default function OnlineVotingScreen({
             </div>
             <h2 className="text-2xl font-bold text-text-primary mb-1">Time to Vote!</h2>
             <p className="text-text-secondary text-xs max-w-xs mx-auto">
-              Discuss with other players, then cast your vote. When all players have voted, the majority vote will decide who gets eliminated!
+              {numToSelect > 1 ? (
+                <>
+                  There are <strong className="text-amber-300 font-bold">{numToSelect} imposters</strong>! Select <strong className="text-amber-300 font-bold">{numToSelect} different players</strong> to eliminate.
+                </>
+              ) : (
+                'Discuss with other players, then cast your secret vote to eliminate the imposter.'
+              )}
             </p>
           </div>
 
@@ -78,10 +110,11 @@ export default function OnlineVotingScreen({
               />
             </div>
 
-            {/* Voter statuses chips */}
+            {/* Voter statuses chips for all room members */}
             <div className="mt-3 pt-3 border-t border-border/40 flex flex-wrap gap-1.5">
               {players.map((p) => {
                 const voted = !!votesMap[p.name]
+                const isMe = p.name.trim().toLowerCase() === myPlayerName.trim().toLowerCase()
                 return (
                   <span
                     key={p.name}
@@ -93,23 +126,42 @@ export default function OnlineVotingScreen({
                   >
                     <span>{voted ? '✓' : '⏳'}</span>
                     <span>{p.name}</span>
+                    {isMe && <span className="text-[10px] opacity-75 font-mono">(You)</span>}
                   </span>
                 )
               })}
             </div>
           </div>
 
-          {/* Voting candidates list */}
+          {/* Selection counter badge if selecting multiple */}
+          {numToSelect > 1 && (
+            <div className="mb-3 flex items-center justify-between px-1">
+              <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                Select {numToSelect} Suspects:
+              </span>
+              <span
+                className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                  isReadyToSubmit
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}
+              >
+                {selectedCandidates.length} / {numToSelect} Selected
+              </span>
+            </div>
+          )}
+
+          {/* Voting candidates list (EXCLUDES SELF) */}
           <div className="space-y-2.5">
-            {players.map((player, i) => {
-              const isSelected = selectedCandidate === player.name
-              const isMySelf = player.name.trim().toLowerCase() === myPlayerName.trim().toLowerCase()
+            {votingCandidates.map((player, i) => {
+              const isSelected = selectedCandidates.includes(player.name)
+              const selectionIndex = selectedCandidates.indexOf(player.name) + 1
 
               return (
                 <button
-                  key={i}
+                  key={player.name}
                   type="button"
-                  onClick={() => handleSelect(player)}
+                  onClick={() => handleToggleCandidate(player.name)}
                   disabled={hasSubmitted}
                   className={`w-full p-4 rounded-xl border transition-all duration-200 flex items-center justify-between text-left ${
                     hasSubmitted
@@ -117,7 +169,7 @@ export default function OnlineVotingScreen({
                         ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/30 border-purple-500/50 shadow-md ring-1 ring-purple-500/40'
                         : 'glass-card-subtle opacity-50 cursor-not-allowed'
                       : isSelected
-                      ? 'bg-purple-600/25 border-purple-400 ring-2 ring-purple-500/40 shadow-lg'
+                      ? 'bg-purple-600/25 border-purple-400 ring-2 ring-purple-500/40 shadow-lg scale-[1.01]'
                       : 'glass-card-subtle hover:bg-bg-card-hover hover:border-purple-500/30 active:scale-[0.99]'
                   }`}
                 >
@@ -126,16 +178,15 @@ export default function OnlineVotingScreen({
                       {player.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-text-primary font-bold text-base truncate">{player.name}</p>
-                        {isMySelf && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            You
-                          </span>
-                        )}
-                      </div>
+                      <p className="text-text-primary font-bold text-base truncate">{player.name}</p>
                       <p className="text-text-muted text-xs">
-                        {hasSubmitted && isSelected ? 'Your Vote Submitted ✓' : isSelected ? 'Selected candidate' : 'Tap to select'}
+                        {hasSubmitted && isSelected
+                          ? 'Your Vote Submitted ✓'
+                          : isSelected
+                          ? numToSelect > 1
+                            ? `Selected Suspect #${selectionIndex}`
+                            : 'Selected candidate'
+                          : 'Tap to select'}
                       </p>
                     </div>
                   </div>
@@ -148,7 +199,7 @@ export default function OnlineVotingScreen({
                           : 'border-border bg-bg-card text-transparent'
                       }`}
                     >
-                      ✓
+                      {numToSelect > 1 && isSelected ? selectionIndex : '✓'}
                     </div>
                   </div>
                 </button>
@@ -162,14 +213,22 @@ export default function OnlineVotingScreen({
           {!hasSubmitted ? (
             <button
               onClick={handleSubmitVote}
-              disabled={!selectedCandidate}
+              disabled={!isReadyToSubmit}
               className={`w-full py-4 text-base tracking-wide rounded-xl font-bold transition-all duration-200 ${
-                selectedCandidate
+                isReadyToSubmit
                   ? 'btn-success animate-pulse-glow shadow-lg shadow-emerald-950/50 hover:brightness-110 active:scale-[0.98]'
                   : 'bg-bg-card text-text-muted border border-border cursor-not-allowed'
               }`}
             >
-              {selectedCandidate ? `Confirm Vote to Eliminate ${selectedCandidate} 🗳️` : 'Tap a player above to vote'}
+              {isReadyToSubmit
+                ? numToSelect > 1
+                  ? `Confirm Vote for ${selectedCandidates.join(' & ')} 🗳️`
+                  : `Confirm Vote to Eliminate ${selectedCandidates[0]} 🗳️`
+                : numToSelect > 1
+                ? `Select ${numToSelect - selectedCandidates.length} more suspect${
+                    numToSelect - selectedCandidates.length > 1 ? 's' : ''
+                  }`
+                : 'Tap a player above to vote'}
             </button>
           ) : (
             <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center animate-pulse">
