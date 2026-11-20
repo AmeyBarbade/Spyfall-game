@@ -1,4 +1,10 @@
-export default function SpeakerScreen({ startingPlayer, onProceed }) {
+export default function SpeakerScreen({
+  startingPlayer,
+  onProceed,
+  isOnline = false,
+  isHost = true,
+  hostName = 'Host',
+}) {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh px-5 py-8 relative overflow-hidden">
       {/* Animated background glows */}
@@ -79,14 +85,26 @@ export default function SpeakerScreen({ startingPlayer, onProceed }) {
           </span>
         </div>
 
-        {/* Proceed button */}
-        <button
-          onClick={onProceed}
-          className="btn-primary w-full py-4 text-lg tracking-wide mt-8 animate-fade-in-up"
-          style={{ animationDelay: '0.8s' }}
-        >
-          🗳️ Proceed to Voting
-        </button>
+        {/* Proceed button: Only Host can proceed in online mode */}
+        {!isOnline || isHost ? (
+          <button
+            onClick={onProceed}
+            className="btn-primary w-full py-4 text-lg tracking-wide mt-8 animate-fade-in-up shadow-lg shadow-purple-950/40"
+            style={{ animationDelay: '0.8s' }}
+          >
+            🗳️ Proceed to Voting →
+          </button>
+        ) : (
+          <div
+            className="mt-8 p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center animate-pulse"
+            style={{ animationDelay: '0.8s' }}
+          >
+            <span className="text-purple-300 font-semibold text-sm flex items-center justify-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+              Waiting for Host ({hostName}) to proceed to voting...
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

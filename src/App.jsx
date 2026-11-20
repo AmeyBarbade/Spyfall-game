@@ -5,25 +5,30 @@ import PlayerEntryScreen from './components/PlayerEntryScreen'
 import CategoryScreen from './components/CategoryScreen'
 import LobbyScreen from './components/LobbyScreen'
 import JoinScreen from './components/JoinScreen'
-import PlayerWaitingScreen from './components/PlayerWaitingScreen'
+import OnlineRevealScreen from './components/OnlineRevealScreen'
 import RevealScreen from './components/RevealScreen'
 import SpeakerScreen from './components/SpeakerScreen'
 import VotingScreen from './components/VotingScreen'
 import ResultScreen from './components/ResultScreen'
+import {
+  subscribeToRoom,
+  publishRoomEvent,
+  closeRoomConnection,
+} from './services/roomSync'
 
 /*
   Game Screens:
-  0. dashboard   → saved games + create new (local & online)
-  1. setup       → game name + room code (if online) + total players + imposters count
-  2. playerEntry → enter names (in online mode: only Player 1 (You))
-  3. category    → pick categories (filters usedWords)
-  4. lobby       → online lobby (waiting for players, live player counter, code showcase)
-  5. join        → friend join screen (enter your name when clicking invite link)
-  6. waiting     → client reveal screen for joined players
-  7. reveal      → pass-and-play or host word reveal
-  8. speaker     → announce who speaks first (weighted random)
-  9. voting      → vote for the imposter
-  10. result     → show who won → next round or dashboard
+  0. dashboard    → saved games + create new (local & online)
+  1. setup        → game name + room code (if online) + total players + imposters count
+  2. playerEntry  → enter names (in online mode: only Player 1 (You))
+  3. category     → pick categories (filters usedWords)
+  4. lobby        → online lobby (waiting for players, live player counter, code showcase)
+  5. join         → friend join screen (enter your name when clicking invite link)
+  6. onlineReveal → single-card reveal for online multiplayer (tap to reveal role)
+  7. reveal       → pass-and-play word reveal (for offline/local mode only)
+  8. speaker      → announce who speaks first (weighted random)
+  9. voting       → vote for the imposter
+  10. result      → show who won → next round or dashboard
 */
 
 // ─── localStorage helpers ───────────────────────────────────────────
@@ -85,13 +90,18 @@ export default function App() {
   const [initialJoinCode, setInitialJoinCode] = useState('')
   const [joinedRoomCode, setJoinedRoomCode] = useState('')
   const [joinedPlayerName, setJoinedPlayerName] = useState('')
-  const [clientRole, setClientRole] = useState(null)
+
+  // Player's own secret role card for online game
+  const [currentRole, setCurrentRole] = useState(null)
 
   // Per-round transient state
   const [players, setPlayers] = useState([])       // players with roles
   const [secretWord, setSecretWord] = useState('')
   const [startingPlayer, setStartingPlayer] = useState(null)
   const [votedPlayer, setVotedPlayer] = useState(null)
+
+  const isHost = !joinedPlayerName
+  const currentRoomCode = activeGame?.roomCode || joinedRoomCode
 
   // Detect URL parameter ?room=CODE or ?join=CODE on mount
   useEffect(() => {
@@ -114,6 +124,33 @@ export default function App() {
   useEffect(() => {
     persistGames(games)
   }, [games])
+
+  // In-game global event listener for all connected players
+  useEffect(() => {
+    if (!currentRoomCode) return
+
+    const unsubscribe = subscribeToRoom(currentRoomCode, (topic, data) => {
+      if (topic.endsWith('/events')) {
+        if (data.type === 'START_DISCUSSION' && data.startingPlayer) {
+          setStartingPlayer(data.startingPlayer)
+          setScreen('speaker')
+        } else if (data.type === 'START_VOTING') {
+          setScreen('voting')
+        } else if (data.type === 'SHOW_RESULT' && data.votedPlayer) {
+          setVotedPlayer(data.votedPlayer)
+          setScreen('result')
+        } else if (data.type === 'NEXT_ROUND') {
+          if (!isHost) {
+            setScreen('lobby')
+          }
+        }
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [currentRoomCode, isHost])
 
   // ─── Dashboard handlers ─────────────────────────────────────────
   const handleCreateNew = useCallback(() => {
@@ -280,49 +317,83 @@ export default function App() {
 
   // ─── Lobby: Host starts the game once players join ─────────────
   const handleLobbyStartGame = useCallback(
-    (gamePlayersWithRoles, word) => {
+    (gamePlayersWithRoles, word, startPayload) => {
       setPlayers(gamePlayersWithRoles)
       setSecretWord(word)
-      setScreen('reveal')
+
+      // Find the Host's role card!
+      const hostName = activeGame?.players?.[0] || 'Host'
+      const hostAssignment = gamePlayersWithRoles.find(
+        (p) => p.name.trim().toLowerCase() === hostName.trim().toLowerCase()
+      )
+      const hostRole = {
+        isImposter: hostAssignment?.isImposter || false,
+        secretWord: hostAssignment?.isImposter ? 'IMPOSTER' : word,
+        category: activeGame?.selectedCategories?.[0] || startPayload?.category || 'General',
+      }
+      setCurrentRole(hostRole)
+      // Host gets the exact same single-card reveal screen as other players!
+      setScreen('onlineReveal')
     },
-    []
+    [activeGame]
   )
 
   // ─── Lobby: Non-host player receives GAME_START from host ──────
   const handleGameStartedByHost = useCallback(
     (data) => {
       if (!data || !data.players) return
+      setPlayers(data.players)
+      setSecretWord(data.secretWord)
       const myAssignment = data.players.find(
         (p) => p.name.trim().toLowerCase() === joinedPlayerName.trim().toLowerCase()
       )
       if (myAssignment) {
-        setClientRole({
+        setCurrentRole({
           isImposter: myAssignment.isImposter,
           secretWord: myAssignment.isImposter ? 'IMPOSTER' : data.secretWord,
           category: data.category || 'General',
         })
-        setScreen('waiting')
+        setScreen('onlineReveal')
       }
     },
     [joinedPlayerName]
   )
 
-  // ─── Reveal → Speaker ──────────────────────────────────────────
-  const handleAllRevealed = useCallback(() => {
-    setStartingPlayer(pickStartingSpeaker(players))
+  // ─── Online Reveal: Host clicks "Start Discussion" ─────────────
+  const handleStartDiscussion = useCallback(() => {
+    const speaker = pickStartingSpeaker(players)
+    setStartingPlayer(speaker)
+    publishRoomEvent(currentRoomCode, {
+      type: 'START_DISCUSSION',
+      startingPlayer: speaker,
+    })
     setScreen('speaker')
-  }, [players])
+  }, [players, currentRoomCode])
 
   // ─── Speaker → Voting ──────────────────────────────────────────
   const handleProceedToVoting = useCallback(() => {
+    if (isOnlineMode) {
+      publishRoomEvent(currentRoomCode, {
+        type: 'START_VOTING',
+      })
+    }
     setScreen('voting')
-  }, [])
+  }, [isOnlineMode, currentRoomCode])
 
   // ─── Vote cast → Result ────────────────────────────────────────
-  const handleVote = useCallback((player) => {
-    setVotedPlayer(player)
-    setScreen('result')
-  }, [])
+  const handleVote = useCallback(
+    (player) => {
+      setVotedPlayer(player)
+      if (isOnlineMode) {
+        publishRoomEvent(currentRoomCode, {
+          type: 'SHOW_RESULT',
+          votedPlayer: player,
+        })
+      }
+      setScreen('result')
+    },
+    [isOnlineMode, currentRoomCode]
+  )
 
   // ─── Next Round: keep game + usedWords, go to category ─────────
   const handleNextRound = useCallback(() => {
@@ -330,21 +401,34 @@ export default function App() {
     setPlayers([])
     setStartingPlayer(null)
     setVotedPlayer(null)
-    setScreen('category')
-  }, [])
+    setCurrentRole(null)
+
+    if (isOnlineMode) {
+      publishRoomEvent(currentRoomCode, {
+        type: 'NEXT_ROUND',
+      })
+      if (isHost) {
+        setScreen('category')
+      } else {
+        setScreen('lobby')
+      }
+    } else {
+      setScreen('category')
+    }
+  }, [isOnlineMode, currentRoomCode, isHost])
 
   // ─── Back to Dashboard: reset everything ───────────────────────
   const handleBackToDashboard = useCallback(() => {
-    // Clear URL parameters if any
     if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname)
     }
+    closeRoomConnection()
     setActiveGame(null)
     setPendingSetup(null)
     setIsOnlineMode(false)
     setJoinedRoomCode('')
     setJoinedPlayerName('')
-    setClientRole(null)
+    setCurrentRole(null)
     setSecretWord('')
     setPlayers([])
     setStartingPlayer(null)
@@ -353,9 +437,7 @@ export default function App() {
   }, [])
 
   const imposters = players.filter((p) => p.isImposter)
-
-  // Determine if current user in Lobby is host or joined player
-  const isHost = !joinedPlayerName
+  const hostPlayerName = activeGame?.players?.[0] || 'Host'
 
   return (
     <div className="min-h-dvh bg-bg-primary bg-grid">
@@ -425,26 +507,34 @@ export default function App() {
         />
       )}
 
-      {screen === 'waiting' && (
-        <PlayerWaitingScreen
-          roomCode={joinedRoomCode}
-          playerName={joinedPlayerName}
-          initialRole={clientRole}
-          onLeave={handleBackToDashboard}
+      {/* Online Reveal Screen: Host and Players get the EXACT SAME single-card reveal screen */}
+      {screen === 'onlineReveal' && (
+        <OnlineRevealScreen
+          roomCode={currentRoomCode}
+          playerName={isHost ? hostPlayerName : joinedPlayerName}
+          isHost={isHost}
+          hostName={hostPlayerName}
+          role={currentRole}
+          onStartDiscussion={handleStartDiscussion}
+          onExit={handleBackToDashboard}
         />
       )}
 
+      {/* Local Pass-and-Play Reveal Screen (offline mode only) */}
       {screen === 'reveal' && (
         <RevealScreen
           players={players}
           secretWord={secretWord}
-          onAllRevealed={handleAllRevealed}
+          onAllRevealed={handleStartDiscussion}
         />
       )}
 
       {screen === 'speaker' && startingPlayer && (
         <SpeakerScreen
           startingPlayer={startingPlayer}
+          isOnline={isOnlineMode}
+          isHost={isHost}
+          hostName={hostPlayerName}
           onProceed={handleProceedToVoting}
         />
       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { createRoomConnection } from '../services/roomSync'
+import { subscribeToRoom, publishRoomEvent, publishRoomState } from '../services/roomSync'
 
 export default function LobbyScreen({
   activeGame,
@@ -30,137 +30,98 @@ export default function LobbyScreen({
   const [copiedLink, setCopiedLink] = useState(false)
   const [showExitConfirm, setShowExitConfirm] = useState(false)
 
-  const connRef = useRef(null)
   const myIdRef = useRef(`user_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`)
 
   // Setup real-time MQTT synchronization
   useEffect(() => {
     const code = (roomCode || 'BARBADE').toUpperCase()
 
-    const conn = createRoomConnection(
-      code,
-      (topic, data) => {
-        // Handle incoming messages
-        if (topic.endsWith('/state')) {
-          if (data && data.players && Array.isArray(data.players)) {
-            setPlayers(data.players)
-          }
-        } else if (topic.endsWith('/events')) {
-          if (data.type === 'PLAYER_JOIN' && data.player?.name) {
-            if (isHost) {
-              setPlayers((prev) => {
-                if (prev.some((p) => p.name.trim().toLowerCase() === data.player.name.trim().toLowerCase())) {
-                  return prev
-                }
-                const updated = [
-                  ...prev,
-                  {
-                    id: data.player.id || Date.now(),
-                    name: data.player.name.trim(),
-                    isHost: false,
-                  },
-                ]
-                // Immediately publish the updated state to everyone
-                conn.publishState({
-                  gameName,
-                  roomCode: code,
-                  totalPlayers,
-                  numImposters,
-                  hostName,
-                  players: updated,
-                  status: 'WAITING',
-                  updatedAt: Date.now(),
-                })
-                return updated
+    const unsubscribe = subscribeToRoom(code, (topic, data) => {
+      if (topic.endsWith('/state')) {
+        if (data && data.players && Array.isArray(data.players)) {
+          setPlayers(data.players)
+        }
+      } else if (topic.endsWith('/events')) {
+        if (data.type === 'PLAYER_JOIN' && data.player?.name) {
+          if (isHost) {
+            setPlayers((prev) => {
+              if (prev.some((p) => p.name.trim().toLowerCase() === data.player.name.trim().toLowerCase())) {
+                return prev
+              }
+              const updated = [
+                ...prev,
+                {
+                  id: data.player.id || Date.now(),
+                  name: data.player.name.trim(),
+                  isHost: false,
+                },
+              ]
+              // Immediately publish the updated state to everyone
+              publishRoomState(code, {
+                gameName,
+                roomCode: code,
+                totalPlayers,
+                numImposters,
+                hostName,
+                players: updated,
+                status: 'WAITING',
+                updatedAt: Date.now(),
               })
-            }
-          } else if (data.type === 'GAME_START') {
-            if (!isHost && onGameStartedByHost) {
-              onGameStartedByHost(data)
-            }
+              return updated
+            })
+          }
+        } else if (data.type === 'GAME_START') {
+          if (!isHost && onGameStartedByHost) {
+            onGameStartedByHost(data)
           }
         }
-      },
-      () => {
-        // On connection open
-        if (!isHost) {
-          // Tell the host we want to join
-          conn.publishEvent({
-            type: 'PLAYER_JOIN',
-            player: {
-              id: myIdRef.current,
-              name: effectiveMyName,
-            },
-          })
-        } else {
-          // Host publishes initial lobby state
-          conn.publishState({
-            gameName,
-            roomCode: code,
-            totalPlayers,
-            numImposters,
-            hostName,
-            players: [{ id: 'host', name: hostName, isHost: true }],
-            status: 'WAITING',
-            updatedAt: Date.now(),
-          })
-        }
       }
-    )
+    })
 
-    connRef.current = conn
-
-    // Also support local BroadcastChannel as instant backup
-    let localChannel = null
-    try {
-      localChannel = new BroadcastChannel(`imposter_room_${code}`)
-      localChannel.onmessage = (event) => {
-        const data = event.data
-        if (data.type === 'PLAYER_JOIN' && data.player?.name && isHost) {
-          setPlayers((prev) => {
-            if (prev.some((p) => p.name.trim().toLowerCase() === data.player.name.trim().toLowerCase())) {
-              return prev
-            }
-            return [
-              ...prev,
-              {
-                id: data.player.id || Date.now(),
-                name: data.player.name.trim(),
-                isHost: false,
-              },
-            ]
-          })
-        } else if (data.type === 'GAME_START' && !isHost && onGameStartedByHost) {
-          onGameStartedByHost(data)
-        }
-      }
-    } catch {
-      // ignore
+    // Initial announce
+    if (!isHost) {
+      // Send join event
+      publishRoomEvent(code, {
+        type: 'PLAYER_JOIN',
+        player: {
+          id: myIdRef.current,
+          name: effectiveMyName,
+        },
+      })
+    } else {
+      // Host publishes initial lobby state
+      publishRoomState(code, {
+        gameName,
+        roomCode: code,
+        totalPlayers,
+        numImposters,
+        hostName,
+        players: [{ id: 'host', name: hostName, isHost: true }],
+        status: 'WAITING',
+        updatedAt: Date.now(),
+      })
     }
 
     return () => {
-      conn.disconnect()
-      if (localChannel) localChannel.close()
+      unsubscribe()
     }
   }, [roomCode, isHost, hostName, effectiveMyName, gameName, totalPlayers, numImposters, onGameStartedByHost])
 
-  // Periodic state heartbeat from host so newly arriving players catch the state quickly
+  // Periodic heartbeat from host so newly arriving players catch the state quickly
   useEffect(() => {
     if (!isHost) return
     const code = (roomCode || 'BARBADE').toUpperCase()
     const interval = setInterval(() => {
-      if (connRef.current) {
-        connRef.current.publishState({
-          gameName,
-          roomCode: code,
-          totalPlayers,
-          numImposters,
-          hostName,
-          players,
-          status: 'WAITING',
-          updatedAt: Date.now(),
-        })
-      }
+      publishRoomState(code, {
+        gameName,
+        roomCode: code,
+        totalPlayers,
+        numImposters,
+        hostName,
+        players,
+        status: 'WAITING',
+        updatedAt: Date.now(),
+      })
     }, 2500)
     return () => clearInterval(interval)
   }, [isHost, roomCode, gameName, totalPlayers, numImposters, hostName, players])
@@ -217,17 +178,16 @@ export default function LobbyScreen({
       secretWord,
       category: selectedCategories[0] || 'General',
       players: gamePlayersWithRoles,
+      hostName,
     }
 
-    if (connRef.current) {
-      connRef.current.publishEvent(startPayload)
-      connRef.current.publishState({
-        status: 'IN_PROGRESS',
-        gameData: startPayload,
-      })
-    }
+    publishRoomEvent(code, startPayload)
+    publishRoomState(code, {
+      status: 'IN_PROGRESS',
+      gameData: startPayload,
+    })
 
-    onStartGame(gamePlayersWithRoles, secretWord)
+    onStartGame(gamePlayersWithRoles, secretWord, startPayload)
   }
 
   const canStart = players.length >= 3
