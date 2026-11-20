@@ -11,6 +11,7 @@ export default function OnlineVotingScreen({
 }) {
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [hasSubmitted, setHasSubmitted] = useState(false)
+  const [showForceConfirm, setShowForceConfirm] = useState(false)
 
   const myVote = votesMap[myPlayerName]
 
@@ -34,7 +35,7 @@ export default function OnlineVotingScreen({
 
   const totalPlayers = players.length
   const votesSubmittedCount = Object.keys(votesMap).length
-  const allVoted = votesSubmittedCount >= totalPlayers
+  const allVoted = totalPlayers > 1 && votesSubmittedCount >= totalPlayers
 
   return (
     <div className="flex flex-col min-h-dvh px-5 py-8 relative">
@@ -50,38 +51,44 @@ export default function OnlineVotingScreen({
             </div>
             <h2 className="text-2xl font-bold text-text-primary mb-1">Time to Vote!</h2>
             <p className="text-text-secondary text-xs max-w-xs mx-auto">
-              Vote for who you believe is the Imposter. The player with the majority of votes will be eliminated!
+              Discuss with other players, then cast your vote. When all players have voted, the majority vote will decide who gets eliminated!
             </p>
           </div>
 
           {/* Live Progress Bar */}
-          <div className="glass-card p-3.5 mb-5 border border-purple-500/20 animate-fade-in">
+          <div className="glass-card p-4 mb-5 border border-purple-500/30 animate-fade-in">
             <div className="flex items-center justify-between text-xs mb-2">
               <span className="font-semibold text-text-secondary">
-                Votes Submitted: <strong className="text-emerald-400">{votesSubmittedCount}</strong> / {totalPlayers}
+                Votes Submitted:{' '}
+                <strong className="text-emerald-400 font-extrabold text-sm">
+                  {votesSubmittedCount}
+                </strong>{' '}
+                / {totalPlayers}
               </span>
-              <span className="text-[11px] text-purple-300 font-mono">
-                {Math.round((votesSubmittedCount / totalPlayers) * 100)}%
+              <span className="text-xs text-purple-300 font-mono font-bold">
+                {totalPlayers > 0 ? Math.round((votesSubmittedCount / totalPlayers) * 100) : 0}%
               </span>
             </div>
-            <div className="h-1.5 bg-bg-card-hover rounded-full overflow-hidden">
+            <div className="h-2 bg-bg-card-hover rounded-full overflow-hidden border border-border/40">
               <div
-                className="h-full bg-gradient-to-r from-purple-500 to-emerald-400 rounded-full transition-all duration-300"
-                style={{ width: `${(votesSubmittedCount / totalPlayers) * 100}%` }}
+                className="h-full bg-gradient-to-r from-purple-500 via-teal-400 to-emerald-400 rounded-full transition-all duration-300"
+                style={{
+                  width: `${totalPlayers > 0 ? (votesSubmittedCount / totalPlayers) * 100 : 0}%`,
+                }}
               />
             </div>
 
             {/* Voter statuses chips */}
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 pt-3 border-t border-border/40 flex flex-wrap gap-1.5">
               {players.map((p) => {
                 const voted = !!votesMap[p.name]
                 return (
                   <span
                     key={p.name}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 border transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all ${
                       voted
-                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                        : 'bg-bg-card/50 border-border/40 text-text-muted'
+                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 shadow-sm'
+                        : 'bg-bg-card/50 border-border/40 text-text-muted/60'
                     }`}
                   >
                     <span>{voted ? '✓' : '⏳'}</span>
@@ -104,44 +111,44 @@ export default function OnlineVotingScreen({
                   type="button"
                   onClick={() => handleSelect(player)}
                   disabled={hasSubmitted}
-                  className={`w-full p-3.5 rounded-xl border transition-all duration-200 flex items-center justify-between text-left ${
+                  className={`w-full p-4 rounded-xl border transition-all duration-200 flex items-center justify-between text-left ${
                     hasSubmitted
                       ? isSelected
-                        ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/30 border-purple-500/50 shadow-md'
-                        : 'glass-card-subtle opacity-60 cursor-not-allowed'
+                        ? 'bg-gradient-to-r from-purple-900/40 to-indigo-900/30 border-purple-500/50 shadow-md ring-1 ring-purple-500/40'
+                        : 'glass-card-subtle opacity-50 cursor-not-allowed'
                       : isSelected
-                      ? 'bg-purple-600/25 border-purple-400 ring-2 ring-purple-500/30 shadow-lg'
+                      ? 'bg-purple-600/25 border-purple-400 ring-2 ring-purple-500/40 shadow-lg'
                       : 'glass-card-subtle hover:bg-bg-card-hover hover:border-purple-500/30 active:scale-[0.99]'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600/30 to-blue-600/30 border border-purple-500/20 flex items-center justify-center text-base font-bold text-purple-300 shrink-0">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-600/30 to-blue-600/30 border border-purple-500/20 flex items-center justify-center text-lg font-bold text-purple-300 shrink-0">
                       {player.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-text-primary font-bold text-sm truncate">{player.name}</p>
+                        <p className="text-text-primary font-bold text-base truncate">{player.name}</p>
                         {isMySelf && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold uppercase tracking-wider bg-purple-500/20 text-purple-300">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
                             You
                           </span>
                         )}
                       </div>
-                      <p className="text-text-muted text-[11px]">
-                        {hasSubmitted && isSelected ? 'Your Vote Submitted ✓' : isSelected ? 'Selected' : 'Tap to vote'}
+                      <p className="text-text-muted text-xs">
+                        {hasSubmitted && isSelected ? 'Your Vote Submitted ✓' : isSelected ? 'Selected candidate' : 'Tap to select'}
                       </p>
                     </div>
                   </div>
 
                   <div className="shrink-0">
                     <div
-                      className={`w-6 h-6 rounded-full border flex items-center justify-center transition-all ${
+                      className={`w-7 h-7 rounded-full border flex items-center justify-center font-bold text-xs transition-all ${
                         isSelected
-                          ? 'bg-purple-500 border-purple-400 text-white text-xs'
-                          : 'border-border bg-bg-card'
+                          ? 'bg-purple-500 border-purple-400 text-white shadow-md shadow-purple-950/60'
+                          : 'border-border bg-bg-card text-transparent'
                       }`}
                     >
-                      {isSelected ? '✓' : ''}
+                      ✓
                     </div>
                   </div>
                 </button>
@@ -162,26 +169,56 @@ export default function OnlineVotingScreen({
                   : 'bg-bg-card text-text-muted border border-border cursor-not-allowed'
               }`}
             >
-              {selectedCandidate ? `Vote to Eliminate ${selectedCandidate} 🗳️` : 'Select a player to vote'}
+              {selectedCandidate ? `Confirm Vote to Eliminate ${selectedCandidate} 🗳️` : 'Tap a player above to vote'}
             </button>
           ) : (
             <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center animate-pulse">
               <span className="text-purple-300 font-semibold text-sm flex items-center justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
                 Vote submitted! Waiting for other players ({votesSubmittedCount}/{totalPlayers})...
               </span>
             </div>
           )}
 
-          {/* Host Force-Tally option if someone is offline/stuck */}
-          {isHost && votesSubmittedCount > 0 && !allVoted && (
-            <button
-              onClick={onTallyVotes}
-              className="w-full py-2.5 rounded-xl bg-bg-card-hover border border-border text-xs text-text-muted hover:text-white transition-all flex items-center justify-center gap-1.5"
-            >
-              <span>⚡</span>
-              <span>Host: Tally current {votesSubmittedCount} votes now</span>
-            </button>
+          {/* Host Fallback Tally button - only if someone left or phone disconnected */}
+          {isHost && votesSubmittedCount > 1 && !allVoted && (
+            <div className="pt-1">
+              {!showForceConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowForceConfirm(true)}
+                  className="w-full py-2.5 rounded-xl bg-bg-card-hover border border-border/80 text-xs text-text-muted hover:text-amber-300 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>⚡</span>
+                  <span>Player disconnected? Force tally current {votesSubmittedCount} votes</span>
+                </button>
+              ) : (
+                <div className="glass-card p-3 text-center space-y-2 border border-amber-500/30 animate-scale-in">
+                  <p className="text-xs text-amber-300 font-semibold">
+                    Tally now with {votesSubmittedCount} out of {totalPlayers} votes?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowForceConfirm(false)}
+                      className="flex-1 py-1.5 rounded-lg bg-bg-card-hover border border-border text-xs text-text-secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForceConfirm(false)
+                        onTallyVotes()
+                      }}
+                      className="flex-1 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+                    >
+                      Yes, Tally Now
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           <p className="text-center text-[11px] text-text-muted">

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import DashboardScreen from './components/DashboardScreen'
 import SetupScreen from './components/SetupScreen'
 import PlayerEntryScreen from './components/PlayerEntryScreen'
@@ -83,6 +83,7 @@ export default function App() {
 
   // Per-round transient state
   const [players, setPlayers] = useState([])       // players with roles
+  const activePlayersRef = useRef([])              // always holds fresh active player list
   const [secretWord, setSecretWord] = useState('')
   const [startingPlayer, setStartingPlayer] = useState(null)
   const [votedPlayer, setVotedPlayer] = useState(null)
@@ -119,15 +120,30 @@ export default function App() {
     persistGames(games)
   }, [games])
 
-  // Helper: Tally votes and determine winner or tie
+  // Helper: Tally votes and determine winner or tie (ONLY when all players have voted or host forces)
   const evaluateVotes = useCallback(
-    (currentVotes) => {
+    (currentVotes, force = false) => {
+      const activeList = activePlayersRef.current.length > 0 ? activePlayersRef.current : players
+      const totalNeeded = activeList.length
+      const votesCount = Object.keys(currentVotes).length
+
+      // DO NOT evaluate if not forced and not all players have voted!
+      if (!force && totalNeeded >= 2 && votesCount < totalNeeded) {
+        return
+      }
+
+      if (votesCount === 0) return
+
       const counts = {}
-      players.forEach((p) => {
+      activeList.forEach((p) => {
         counts[p.name] = 0
       })
       Object.values(currentVotes).forEach((target) => {
-        counts[target] = (counts[target] || 0) + 1
+        if (counts[target] !== undefined) {
+          counts[target] = counts[target] + 1
+        } else {
+          counts[target] = 1
+        }
       })
 
       const maxVotes = Math.max(...Object.values(counts))
@@ -138,7 +154,7 @@ export default function App() {
       if (leaders.length === 1) {
         // Clear majority winner!
         const winnerName = leaders[0]
-        const targetPlayer = players.find((p) => p.name === winnerName)
+        const targetPlayer = activeList.find((p) => p.name === winnerName) || { name: winnerName, isImposter: false }
         const details = { count: maxVotes, isTieBreaker: false }
         publishRoomEvent(currentRoomCode, {
           type: 'SHOW_RESULT',
@@ -164,6 +180,61 @@ export default function App() {
     [players, currentRoomCode]
   )
 
+  // Helper: Tally tie-breaker votes
+  const evaluateTieVotes = useCallback(
+    (currentTieVotes, currentTied, force = false) => {
+      const activeList = activePlayersRef.current.length > 0 ? activePlayersRef.current : players
+      const totalNeeded = activeList.length
+      const votesCount = Object.keys(currentTieVotes).length
+
+      if (!force && totalNeeded >= 2 && votesCount < totalNeeded) {
+        return
+      }
+
+      if (votesCount === 0) return
+
+      const counts = {}
+      currentTied.forEach((name) => {
+        counts[name] = 0
+      })
+      Object.values(currentTieVotes).forEach((target) => {
+        if (counts[target] !== undefined) {
+          counts[target] = counts[target] + 1
+        }
+      })
+
+      const maxVotes = Math.max(...Object.values(counts))
+      const topCandidates = currentTied.filter((name) => counts[name] === maxVotes)
+
+      if (topCandidates.length === 1 && maxVotes > 0) {
+        // Clear majority in tie-breaker!
+        const winnerName = topCandidates[0]
+        const targetPlayer = activeList.find((p) => p.name === winnerName) || { name: winnerName, isImposter: false }
+        const details = { count: maxVotes, isTieBreaker: true }
+        publishRoomEvent(currentRoomCode, {
+          type: 'SHOW_RESULT',
+          votedPlayer: targetPlayer,
+          voteDetails: details,
+        })
+        setVotedPlayer(targetPlayer)
+        setVoteDetails(details)
+        setScreen('result')
+      } else {
+        // Still tied! Reset for revote
+        const nextRound = tieRoundNumber + 1
+        publishRoomEvent(currentRoomCode, {
+          type: 'RESET_TIE_BREAKER',
+          tiedCandidates: topCandidates,
+          round: nextRound,
+        })
+        setTiedCandidates(topCandidates)
+        setTieVotesMap({})
+        setTieRoundNumber(nextRound)
+      }
+    },
+    [players, currentRoomCode, tieRoundNumber]
+  )
+
   // In-game global event listener for all connected players
   useEffect(() => {
     if (!currentRoomCode) return
@@ -183,9 +254,11 @@ export default function App() {
           if (data.voter && data.target) {
             setVotesMap((prev) => {
               const updated = { ...prev, [data.voter]: data.target }
-              // If Host and all players have voted, evaluate majority
-              if (isHost && Object.keys(updated).length >= players.length) {
-                setTimeout(() => evaluateVotes(updated), 500)
+              const totalNeeded = activePlayersRef.current.length > 0 ? activePlayersRef.current.length : players.length
+
+              // ONLY evaluate if Host AND all players have voted!
+              if (isHost && totalNeeded >= 2 && Object.keys(updated).length >= totalNeeded) {
+                setTimeout(() => evaluateVotes(updated, false), 500)
               }
               return updated
             })
@@ -197,10 +270,16 @@ export default function App() {
           setScreen('tieBreaker')
         } else if (data.type === 'TIE_VOTE_CAST') {
           if (data.voter && data.target) {
-            setTieVotesMap((prev) => ({
-              ...prev,
-              [data.voter]: data.target,
-            }))
+            setTieVotesMap((prev) => {
+              const updated = { ...prev, [data.voter]: data.target }
+              const totalNeeded = activePlayersRef.current.length > 0 ? activePlayersRef.current.length : players.length
+
+              // If Host and all players have voted in tie-breaker
+              if (isHost && totalNeeded >= 2 && Object.keys(updated).length >= totalNeeded) {
+                setTimeout(() => evaluateTieVotes(updated, tiedCandidates, false), 500)
+              }
+              return updated
+            })
           }
         } else if (data.type === 'RESET_TIE_BREAKER') {
           setTiedCandidates(data.tiedCandidates || [])
@@ -221,7 +300,7 @@ export default function App() {
     return () => {
       unsubscribe()
     }
-  }, [currentRoomCode, isHost, players, evaluateVotes])
+  }, [currentRoomCode, isHost, players.length, evaluateVotes, evaluateTieVotes, tiedCandidates])
 
   // ─── Dashboard handlers ─────────────────────────────────────────
   const handleCreateNew = useCallback(() => {
@@ -377,6 +456,7 @@ export default function App() {
         }))
       )
 
+      activePlayersRef.current = gamePlayers
       setPlayers(gamePlayers)
       setScreen('reveal')
     },
@@ -386,6 +466,7 @@ export default function App() {
   // ─── Lobby: Host starts the game once players join ─────────────
   const handleLobbyStartGame = useCallback(
     (gamePlayersWithRoles, word, startPayload) => {
+      activePlayersRef.current = gamePlayersWithRoles
       setPlayers(gamePlayersWithRoles)
       setSecretWord(word)
 
@@ -408,6 +489,7 @@ export default function App() {
   const handleGameStartedByHost = useCallback(
     (data) => {
       if (!data || !data.players) return
+      activePlayersRef.current = data.players
       setPlayers(data.players)
       setSecretWord(data.secretWord)
       const myAssignment = data.players.find(
@@ -427,7 +509,8 @@ export default function App() {
 
   // ─── Online Reveal: Host clicks "Start Discussion" ─────────────
   const handleStartDiscussion = useCallback(() => {
-    const speaker = pickStartingSpeaker(players)
+    const activeList = activePlayersRef.current.length > 0 ? activePlayersRef.current : players
+    const speaker = pickStartingSpeaker(activeList)
     setStartingPlayer(speaker)
     publishRoomEvent(currentRoomCode, {
       type: 'START_DISCUSSION',
@@ -460,8 +543,11 @@ export default function App() {
           voter: myPlayerName,
           target: candidateName,
         })
-        if (isHost && Object.keys(updated).length >= players.length) {
-          setTimeout(() => evaluateVotes(updated), 500)
+        const totalNeeded = activePlayersRef.current.length > 0 ? activePlayersRef.current.length : players.length
+
+        // ONLY evaluate if Host AND every player has cast their vote!
+        if (isHost && totalNeeded >= 2 && Object.keys(updated).length >= totalNeeded) {
+          setTimeout(() => evaluateVotes(updated, false), 500)
         }
         return updated
       })
@@ -469,9 +555,9 @@ export default function App() {
     [myPlayerName, currentRoomCode, isHost, players.length, evaluateVotes]
   )
 
-  // Host manual tally trigger if someone disconnected
+  // Host manual tally trigger (force = true)
   const handleManualTally = useCallback(() => {
-    evaluateVotes(votesMap)
+    evaluateVotes(votesMap, true)
   }, [evaluateVotes, votesMap])
 
   // ─── Tie-Breaker Handlers ──────────────────────────────────────
@@ -484,10 +570,16 @@ export default function App() {
           voter: myPlayerName,
           target: candidateName,
         })
+        const totalNeeded = activePlayersRef.current.length > 0 ? activePlayersRef.current.length : players.length
+
+        // If Host and all players have voted in tie-breaker
+        if (isHost && totalNeeded >= 2 && Object.keys(updated).length >= totalNeeded) {
+          setTimeout(() => evaluateTieVotes(updated, tiedCandidates, false), 500)
+        }
         return updated
       })
     },
-    [myPlayerName, currentRoomCode]
+    [myPlayerName, currentRoomCode, isHost, players.length, tiedCandidates, evaluateTieVotes]
   )
 
   const handleResolveTieBreaker = useCallback(
@@ -531,6 +623,7 @@ export default function App() {
   const handleNextRound = useCallback(() => {
     setSecretWord('')
     setPlayers([])
+    activePlayersRef.current = []
     setStartingPlayer(null)
     setVotedPlayer(null)
     setVoteDetails(null)
@@ -568,6 +661,7 @@ export default function App() {
     setCurrentRole(null)
     setSecretWord('')
     setPlayers([])
+    activePlayersRef.current = []
     setStartingPlayer(null)
     setVotedPlayer(null)
     setVoteDetails(null)
