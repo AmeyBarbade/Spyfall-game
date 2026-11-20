@@ -1,12 +1,17 @@
 import { useState } from 'react'
+import JoinModal from './JoinModal'
 
 export default function DashboardScreen({
   games,
   onCreateNew,
+  onCreateOnlineGame,
+  onJoinOnlineGame,
   onContinueGame,
   onDeleteGame,
+  initialJoinCode = '',
 }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [showJoinModal, setShowJoinModal] = useState(!!initialJoinCode)
 
   const sortedGames = [...games].sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
@@ -29,7 +34,7 @@ export default function DashboardScreen({
 
       <div className="relative z-10 w-full max-w-md mx-auto flex-1 flex flex-col">
         {/* Hero */}
-        <div className="text-center pt-8 pb-10 animate-fade-in-up">
+        <div className="text-center pt-8 pb-8 animate-fade-in-up">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 mb-5 shadow-lg shadow-purple-900/40">
             <span className="text-4xl">🕵️</span>
           </div>
@@ -49,14 +54,64 @@ export default function DashboardScreen({
           </div>
         </div>
 
-        {/* Create New Game */}
-        <button
-          onClick={onCreateNew}
-          className="w-full py-4 rounded-xl font-semibold text-lg tracking-wide bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-900/30 hover:shadow-purple-900/50 hover:from-purple-500 hover:to-violet-500 transition-all duration-200 active:scale-[0.98] animate-fade-in-up mb-8"
-          style={{ animationDelay: '0.1s' }}
-        >
-          ✨ Create New Game
-        </button>
+        {/* Game Mode Selection Buttons */}
+        <div className="space-y-3 mb-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+          {/* Create Local Game */}
+          <button
+            onClick={onCreateNew}
+            className="w-full py-4 px-5 rounded-2xl font-semibold text-base tracking-wide bg-gradient-to-r from-purple-600 via-violet-600 to-purple-700 text-white shadow-lg shadow-purple-900/30 hover:shadow-purple-900/50 hover:from-purple-500 hover:to-violet-500 transition-all duration-200 active:scale-[0.98] flex items-center justify-between group border border-purple-500/30"
+          >
+            <div className="flex items-center gap-3.5 text-left">
+              <span className="text-2xl">📱</span>
+              <div>
+                <div className="font-bold text-white text-base leading-tight">
+                  ✨ Create New Game
+                </div>
+                <div className="text-purple-200/70 text-xs font-normal">
+                  Pass & play locally on this device
+                </div>
+              </div>
+            </div>
+            <span className="text-purple-300 text-lg group-hover:translate-x-1 transition-transform">
+              →
+            </span>
+          </button>
+
+          {/* Create Online Multiplayer Game */}
+          <button
+            onClick={onCreateOnlineGame}
+            className="w-full py-4 px-5 rounded-2xl font-semibold text-base tracking-wide bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 text-white shadow-lg shadow-blue-900/40 hover:shadow-cyan-900/50 hover:from-blue-500 hover:to-cyan-500 transition-all duration-200 active:scale-[0.98] flex items-center justify-between group relative overflow-hidden border border-cyan-400/40"
+          >
+            <div className="flex items-center gap-3.5 text-left">
+              <span className="text-2xl">🌐</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white text-base leading-tight">
+                    Create Online Multiplayer Game
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-400/20 text-cyan-200 border border-cyan-400/40">
+                    Online
+                  </span>
+                </div>
+                <div className="text-cyan-100/70 text-xs font-normal">
+                  Host room with custom code & play on separate phones
+                </div>
+              </div>
+            </div>
+            <span className="text-cyan-200 text-lg group-hover:translate-x-1 transition-transform">
+              →
+            </span>
+          </button>
+
+          {/* Join Online Lobby with Code */}
+          <button
+            onClick={() => setShowJoinModal(true)}
+            className="w-full py-3 px-4 rounded-xl font-medium text-xs text-text-secondary hover:text-white bg-bg-card/60 hover:bg-bg-card-hover border border-border hover:border-purple-500/40 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]"
+          >
+            <span>🔑</span>
+            <span>Have a room code? <strong className="text-purple-300">Join Game Lobby</strong></span>
+          </button>
+        </div>
 
         {/* Saved Games */}
         <div className="flex-1">
@@ -90,9 +145,16 @@ export default function DashboardScreen({
                 <div key={game.id} className="glass-card p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold text-text-primary truncate">
-                        🎮 {game.gameName}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-text-primary truncate">
+                          🎮 {game.gameName}
+                        </h3>
+                        {game.isOnline && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            {game.roomCode || 'Online'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-text-muted mt-0.5">
                         Created {formatDate(game.createdAt)}
                       </p>
@@ -162,6 +224,17 @@ export default function DashboardScreen({
           )}
         </div>
       </div>
+
+      {/* Join Online Game Modal */}
+      <JoinModal
+        isOpen={showJoinModal}
+        onClose={() => setShowJoinModal(false)}
+        initialRoomCode={initialJoinCode}
+        onJoin={(code, name) => {
+          setShowJoinModal(false)
+          onJoinOnlineGame(code, name)
+        }}
+      />
     </div>
   )
 }

@@ -63,6 +63,7 @@ export default function CategoryScreen({
   onStartGame,
   onBackToDashboard,
   onEditPlayers,
+  isOnline = false,
 }) {
   const [rawCategories, setRawCategories] = useState({}) // all words from sheet
   const [customCategories, setCustomCategories] = useState(loadCustomCategories)
@@ -604,16 +605,18 @@ export default function CategoryScreen({
           <button
             onClick={handleStart}
             disabled={selectedCategories.length === 0 || totalWords === 0}
-            className={`w-full py-4 text-lg tracking-wide rounded-xl font-semibold transition-all duration-200 ${
+            className={`w-full py-4 text-lg tracking-wide rounded-xl font-bold transition-all duration-200 ${
               selectedCategories.length > 0 && totalWords > 0
-                ? 'btn-success animate-pulse-glow'
+                ? 'btn-success animate-pulse-glow shadow-lg shadow-emerald-950/50 hover:brightness-110 active:scale-[0.98]'
                 : 'bg-bg-card text-text-muted border border-border cursor-not-allowed'
             }`}
             style={selectedCategories.length > 0 && totalWords > 0 ? { '--tw-shadow-color': 'rgba(16, 185, 129, 0.3)' } : {}}
           >
             {selectedCategories.length > 0
               ? totalWords > 0
-                ? '🎮 Start Round'
+                ? isOnline
+                  ? '🚀 Create Lobby'
+                  : '🎮 Start Round'
                 : 'No fresh words left in selection'
               : 'Select at least 1 category'}
           </button>

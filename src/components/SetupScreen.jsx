@@ -1,15 +1,35 @@
 import { useState } from 'react'
 
-export default function SetupScreen({ onNext, onBack }) {
+export default function SetupScreen({ onNext, onBack, isOnline = false, initialCode = '' }) {
   const [gameName, setGameName] = useState('')
   const [totalPlayers, setTotalPlayers] = useState(4)
   const [numImposters, setNumImposters] = useState(1)
+  const [roomCode, setRoomCode] = useState(initialCode || 'BARBADE')
   const [error, setError] = useState('')
+
+  const randomCodes = ['BARBADE', 'SPYWARS', 'PHANTOM', 'MYSTERY', 'SHADOW7', 'CIPHER9', 'INTRUDE']
+
+  const handleGenerateRandomCode = () => {
+    const pick = randomCodes[Math.floor(Math.random() * randomCodes.length)]
+    setRoomCode(pick)
+    setError('')
+  }
 
   const handleNext = () => {
     if (!gameName.trim()) {
       setError('Give your game a name')
       return
+    }
+    if (isOnline) {
+      const cleanCode = roomCode.trim().toUpperCase()
+      if (!cleanCode) {
+        setError('Please enter a room code')
+        return
+      }
+      if (cleanCode.length < 6) {
+        setError('Room code must be at least 6 letters (e.g. BARBADE)')
+        return
+      }
     }
     if (totalPlayers < 3) {
       setError('Minimum 3 players required')
@@ -24,7 +44,7 @@ export default function SetupScreen({ onNext, onBack }) {
       return
     }
     setError('')
-    onNext(gameName.trim(), totalPlayers, numImposters)
+    onNext(gameName.trim(), totalPlayers, numImposters, roomCode.trim().toUpperCase(), isOnline)
   }
 
   return (
@@ -47,10 +67,14 @@ export default function SetupScreen({ onNext, onBack }) {
         {/* Title */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 mb-4 shadow-lg shadow-purple-900/40">
-            <span className="text-3xl">🎮</span>
+            <span className="text-3xl">{isOnline ? '🌐' : '🎮'}</span>
           </div>
-          <h1 className="text-2xl font-bold text-text-primary mb-1">Create New Game</h1>
-          <p className="text-text-secondary text-sm">Set up your game session</p>
+          <h1 className="text-2xl font-bold text-text-primary mb-1">
+            {isOnline ? 'Create Online Game' : 'Create New Game'}
+          </h1>
+          <p className="text-text-secondary text-sm">
+            {isOnline ? 'Set up your multiplayer room session' : 'Set up your game session'}
+          </p>
         </div>
 
         {/* Setup Card */}
@@ -63,13 +87,54 @@ export default function SetupScreen({ onNext, onBack }) {
             <input
               type="text"
               value={gameName}
-              onChange={(e) => setGameName(e.target.value)}
+              onChange={(e) => {
+                setGameName(e.target.value)
+                setError('')
+              }}
               placeholder="e.g. Saturday Night Session"
               className="input-field text-base"
               autoComplete="off"
               autoFocus
             />
           </div>
+
+          {/* Room Code (Visible for Online Multiplayer) */}
+          {isOnline && (
+            <div className="animate-fade-in">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-text-secondary tracking-wide">
+                  🔑 Room Code (Min 6 Letters)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGenerateRandomCode}
+                  className="text-xs text-purple-400 hover:text-purple-300 font-semibold transition-colors"
+                >
+                  🎲 Random Code
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={roomCode}
+                  onChange={(e) => {
+                    setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))
+                    setError('')
+                  }}
+                  placeholder="e.g. BARBADE"
+                  maxLength={12}
+                  className="input-field font-mono text-base font-bold tracking-widest uppercase pr-10"
+                  autoComplete="off"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-text-muted">
+                  {roomCode.length}/12
+                </span>
+              </div>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Friends will enter this code to join your lobby (min 6 characters, e.g. BARBADE)
+              </p>
+            </div>
+          )}
 
           {/* Total Players */}
           <div>
@@ -78,6 +143,7 @@ export default function SetupScreen({ onNext, onBack }) {
             </label>
             <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => setTotalPlayers(Math.max(3, totalPlayers - 1))}
                 className="w-11 h-11 rounded-xl bg-bg-card-hover border border-border flex items-center justify-center text-lg font-bold text-text-primary hover:bg-accent-purple/20 hover:border-accent-purple/40 transition-all active:scale-95"
               >
@@ -91,6 +157,7 @@ export default function SetupScreen({ onNext, onBack }) {
                 min={3}
               />
               <button
+                type="button"
                 onClick={() => setTotalPlayers(totalPlayers + 1)}
                 className="w-11 h-11 rounded-xl bg-bg-card-hover border border-border flex items-center justify-center text-lg font-bold text-text-primary hover:bg-accent-purple/20 hover:border-accent-purple/40 transition-all active:scale-95"
               >
@@ -106,6 +173,7 @@ export default function SetupScreen({ onNext, onBack }) {
             </label>
             <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => setNumImposters(Math.max(1, numImposters - 1))}
                 className="w-11 h-11 rounded-xl bg-bg-card-hover border border-border flex items-center justify-center text-lg font-bold text-text-primary hover:bg-accent-purple/20 hover:border-accent-purple/40 transition-all active:scale-95"
               >
@@ -120,6 +188,7 @@ export default function SetupScreen({ onNext, onBack }) {
                 max={totalPlayers - 1}
               />
               <button
+                type="button"
                 onClick={() => setNumImposters(Math.min(totalPlayers - 1, numImposters + 1))}
                 className="w-11 h-11 rounded-xl bg-bg-card-hover border border-border flex items-center justify-center text-lg font-bold text-text-primary hover:bg-accent-purple/20 hover:border-accent-purple/40 transition-all active:scale-95"
               >
