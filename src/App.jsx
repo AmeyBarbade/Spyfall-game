@@ -4,6 +4,7 @@ import SetupScreen from './components/SetupScreen'
 import PlayerEntryScreen from './components/PlayerEntryScreen'
 import CategoryScreen from './components/CategoryScreen'
 import LobbyScreen from './components/LobbyScreen'
+import JoinScreen from './components/JoinScreen'
 import PlayerWaitingScreen from './components/PlayerWaitingScreen'
 import RevealScreen from './components/RevealScreen'
 import SpeakerScreen from './components/SpeakerScreen'
@@ -17,11 +18,12 @@ import ResultScreen from './components/ResultScreen'
   2. playerEntry → enter names (in online mode: only Player 1 (You))
   3. category    → pick categories (filters usedWords)
   4. lobby       → online lobby (waiting for players, live player counter, code showcase)
-  5. waiting     → client waiting screen for joined players
-  6. reveal      → pass-and-play or individual word reveal
-  7. speaker     → announce who speaks first (weighted random)
-  8. voting      → vote for the imposter
-  9. result      → show who won → next round or dashboard
+  5. join        → friend join screen (enter your name when clicking invite link)
+  6. waiting     → client reveal screen for joined players
+  7. reveal      → pass-and-play or host word reveal
+  8. speaker     → announce who speaks first (weighted random)
+  9. voting      → vote for the imposter
+  10. result     → show who won → next round or dashboard
 */
 
 // ─── localStorage helpers ───────────────────────────────────────────
@@ -72,17 +74,18 @@ export default function App() {
   const [screen, setScreen] = useState('dashboard')
   const [games, setGames] = useState(() => loadGames())
 
-  // Active game (full object from localStorage) — null when on dashboard/setup
+  // Active game (full object) — null when on dashboard/setup
   const [activeGame, setActiveGame] = useState(null)
 
   // Temporary state used only during setup flow
   const [pendingSetup, setPendingSetup] = useState(null)
   const [isOnlineMode, setIsOnlineMode] = useState(false)
 
-  // Client joining state (when another player joins with a room code)
+  // Client joining state (when friend opens invite link with ?room=CODE)
   const [initialJoinCode, setInitialJoinCode] = useState('')
   const [joinedRoomCode, setJoinedRoomCode] = useState('')
   const [joinedPlayerName, setJoinedPlayerName] = useState('')
+  const [clientRole, setClientRole] = useState(null)
 
   // Per-round transient state
   const [players, setPlayers] = useState([])       // players with roles
@@ -96,7 +99,11 @@ export default function App() {
       const params = new URLSearchParams(window.location.search)
       const room = params.get('room') || params.get('join')
       if (room) {
-        setInitialJoinCode(room.toUpperCase())
+        const cleanRoom = room.trim().toUpperCase()
+        setInitialJoinCode(cleanRoom)
+        setJoinedRoomCode(cleanRoom)
+        // Directly open the JoinScreen!
+        setScreen('join')
       }
     } catch {
       // ignore
@@ -112,24 +119,33 @@ export default function App() {
   const handleCreateNew = useCallback(() => {
     setIsOnlineMode(false)
     setPendingSetup(null)
+    setJoinedPlayerName('')
     setScreen('setup')
   }, [])
 
   const handleCreateOnlineGame = useCallback(() => {
     setIsOnlineMode(true)
     setPendingSetup(null)
+    setJoinedPlayerName('')
     setScreen('setup')
   }, [])
 
   const handleJoinOnlineGame = useCallback((code, name) => {
     setJoinedRoomCode(code)
     setJoinedPlayerName(name)
-    setScreen('waiting')
+    setActiveGame({
+      roomCode: code,
+      isOnline: true,
+      players: [],
+    })
+    setIsOnlineMode(true)
+    setScreen('lobby')
   }, [])
 
   const handleContinueGame = useCallback((game) => {
     setActiveGame(game)
     setIsOnlineMode(!!game.isOnline)
+    setJoinedPlayerName('')
     setScreen('category')
   }, [])
 
@@ -144,7 +160,7 @@ export default function App() {
         gameName,
         totalPlayers: total,
         numImposters: imposters,
-        roomCode: roomCode || 'BARBADE',
+        roomCode: roomCode || '',
         isOnline: !!isOnline,
       })
       setIsOnlineMode(!!isOnline)
@@ -174,7 +190,7 @@ export default function App() {
           players: names, // In online mode, names is [hostName]
           totalPlayers: pendingSetup.totalPlayers,
           numImposters: numImp,
-          roomCode: pendingSetup.roomCode || 'BARBADE',
+          roomCode: pendingSetup.roomCode || '',
           isOnline: !!pendingSetup.isOnline,
           usedWords: [],
           createdAt: new Date().toISOString(),
@@ -272,6 +288,25 @@ export default function App() {
     []
   )
 
+  // ─── Lobby: Non-host player receives GAME_START from host ──────
+  const handleGameStartedByHost = useCallback(
+    (data) => {
+      if (!data || !data.players) return
+      const myAssignment = data.players.find(
+        (p) => p.name.trim().toLowerCase() === joinedPlayerName.trim().toLowerCase()
+      )
+      if (myAssignment) {
+        setClientRole({
+          isImposter: myAssignment.isImposter,
+          secretWord: myAssignment.isImposter ? 'IMPOSTER' : data.secretWord,
+          category: data.category || 'General',
+        })
+        setScreen('waiting')
+      }
+    },
+    [joinedPlayerName]
+  )
+
   // ─── Reveal → Speaker ──────────────────────────────────────────
   const handleAllRevealed = useCallback(() => {
     setStartingPlayer(pickStartingSpeaker(players))
@@ -300,11 +335,16 @@ export default function App() {
 
   // ─── Back to Dashboard: reset everything ───────────────────────
   const handleBackToDashboard = useCallback(() => {
+    // Clear URL parameters if any
+    if (window.location.search) {
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
     setActiveGame(null)
     setPendingSetup(null)
     setIsOnlineMode(false)
     setJoinedRoomCode('')
     setJoinedPlayerName('')
+    setClientRole(null)
     setSecretWord('')
     setPlayers([])
     setStartingPlayer(null)
@@ -313,6 +353,9 @@ export default function App() {
   }, [])
 
   const imposters = players.filter((p) => p.isImposter)
+
+  // Determine if current user in Lobby is host or joined player
+  const isHost = !joinedPlayerName
 
   return (
     <div className="min-h-dvh bg-bg-primary bg-grid">
@@ -333,7 +376,7 @@ export default function App() {
           onNext={handleSetupComplete}
           onBack={handleBackToDashboardFromSetup}
           isOnline={isOnlineMode}
-          initialCode={pendingSetup?.roomCode || 'BARBADE'}
+          initialCode={pendingSetup?.roomCode || ''}
         />
       )}
 
@@ -345,7 +388,7 @@ export default function App() {
           initialNames={!pendingSetup && activeGame ? activeGame.players : []}
           isEditing={!pendingSetup && !!activeGame}
           isOnline={pendingSetup ? pendingSetup.isOnline : !!activeGame?.isOnline}
-          roomCode={pendingSetup ? pendingSetup.roomCode : activeGame?.roomCode || 'BARBADE'}
+          roomCode={pendingSetup ? pendingSetup.roomCode : activeGame?.roomCode || ''}
           onNext={handlePlayerNamesComplete}
           onBack={handleBackFromPlayerEntry}
         />
@@ -363,10 +406,21 @@ export default function App() {
         />
       )}
 
+      {screen === 'join' && (
+        <JoinScreen
+          roomCode={joinedRoomCode || initialJoinCode}
+          onJoin={handleJoinOnlineGame}
+          onBack={handleBackToDashboard}
+        />
+      )}
+
       {screen === 'lobby' && activeGame && (
         <LobbyScreen
           activeGame={activeGame}
+          isHost={isHost}
+          myPlayerName={joinedPlayerName}
           onStartGame={handleLobbyStartGame}
+          onGameStartedByHost={handleGameStartedByHost}
           onBackToDashboard={handleBackToDashboard}
         />
       )}
@@ -375,6 +429,7 @@ export default function App() {
         <PlayerWaitingScreen
           roomCode={joinedRoomCode}
           playerName={joinedPlayerName}
+          initialRole={clientRole}
           onLeave={handleBackToDashboard}
         />
       )}

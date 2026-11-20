@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
+import { createRoomConnection } from '../services/roomSync'
 
 export default function LobbyScreen({
   activeGame,
+  isHost = true,
+  myPlayerName = '',
   onStartGame,
+  onGameStartedByHost,
   onBackToDashboard,
 }) {
   const {
-    gameName,
-    roomCode,
+    gameName = 'Imposter Game',
+    roomCode = 'BARBADE',
     totalPlayers = 4,
     numImposters = 1,
     players: initialPlayers = [],
@@ -16,8 +20,9 @@ export default function LobbyScreen({
   } = activeGame || {}
 
   const hostName = initialPlayers[0] || 'Host'
+  const effectiveMyName = myPlayerName || hostName
 
-  // Joined players list (Host is always Player 1)
+  // Players list in the lobby
   const [players, setPlayers] = useState([
     { id: 'host', name: hostName, isHost: true },
   ])
@@ -25,83 +30,140 @@ export default function LobbyScreen({
   const [copiedLink, setCopiedLink] = useState(false)
   const [showExitConfirm, setShowExitConfirm] = useState(false)
 
-  const channelRef = useRef(null)
+  const connRef = useRef(null)
+  const myIdRef = useRef(`user_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`)
 
-  const demoNamesPool = [
-    'Aarav',
-    'Priya',
-    'Rohan',
-    'Sneha',
-    'Vikram',
-    'Ananya',
-    'Kabir',
-    'Rhea',
-    'Arjun',
-    'Diya',
-  ]
-
-  // Broadcast lobby state and listen for incoming players
+  // Setup real-time MQTT synchronization
   useEffect(() => {
     const code = (roomCode || 'BARBADE').toUpperCase()
-    let channel = null
 
-    try {
-      channel = new BroadcastChannel(`imposter_room_${code}`)
-      channelRef.current = channel
-
-      channel.onmessage = (event) => {
-        const data = event.data
-        if (data.type === 'PLAYER_PING' || data.type === 'JOIN_ROOM') {
-          const newPlayer = data.player
-          if (newPlayer?.name) {
-            setPlayers((prev) => {
-              if (prev.some((p) => p.name.trim().toLowerCase() === newPlayer.name.trim().toLowerCase())) {
-                return prev
-              }
-              if (prev.length >= totalPlayers) {
-                return prev
-              }
-              return [...prev, { id: newPlayer.id || Date.now(), name: newPlayer.name.trim(), isHost: false }]
-            })
+    const conn = createRoomConnection(
+      code,
+      (topic, data) => {
+        // Handle incoming messages
+        if (topic.endsWith('/state')) {
+          if (data && data.players && Array.isArray(data.players)) {
+            setPlayers(data.players)
+          }
+        } else if (topic.endsWith('/events')) {
+          if (data.type === 'PLAYER_JOIN' && data.player?.name) {
+            if (isHost) {
+              setPlayers((prev) => {
+                if (prev.some((p) => p.name.trim().toLowerCase() === data.player.name.trim().toLowerCase())) {
+                  return prev
+                }
+                const updated = [
+                  ...prev,
+                  {
+                    id: data.player.id || Date.now(),
+                    name: data.player.name.trim(),
+                    isHost: false,
+                  },
+                ]
+                // Immediately publish the updated state to everyone
+                conn.publishState({
+                  gameName,
+                  roomCode: code,
+                  totalPlayers,
+                  numImposters,
+                  hostName,
+                  players: updated,
+                  status: 'WAITING',
+                  updatedAt: Date.now(),
+                })
+                return updated
+              })
+            }
+          } else if (data.type === 'GAME_START') {
+            if (!isHost && onGameStartedByHost) {
+              onGameStartedByHost(data)
+            }
           }
         }
+      },
+      () => {
+        // On connection open
+        if (!isHost) {
+          // Tell the host we want to join
+          conn.publishEvent({
+            type: 'PLAYER_JOIN',
+            player: {
+              id: myIdRef.current,
+              name: effectiveMyName,
+            },
+          })
+        } else {
+          // Host publishes initial lobby state
+          conn.publishState({
+            gameName,
+            roomCode: code,
+            totalPlayers,
+            numImposters,
+            hostName,
+            players: [{ id: 'host', name: hostName, isHost: true }],
+            status: 'WAITING',
+            updatedAt: Date.now(),
+          })
+        }
       }
-    } catch {
-      // BroadcastChannel fallback
-    }
+    )
 
-    return () => {
-      if (channel) channel.close()
-    }
-  }, [roomCode, totalPlayers])
+    connRef.current = conn
 
-  // Sync to localStorage and broadcast whenever players list changes
-  useEffect(() => {
-    const code = (roomCode || 'BARBADE').toUpperCase()
-    const lobbyData = {
-      gameName,
-      roomCode: code,
-      totalPlayers,
-      numImposters,
-      hostName,
-      players,
-      status: 'WAITING',
-      updatedAt: Date.now(),
-    }
-
+    // Also support local BroadcastChannel as instant backup
+    let localChannel = null
     try {
-      localStorage.setItem(`imposter_lobby_${code}`, JSON.stringify(lobbyData))
+      localChannel = new BroadcastChannel(`imposter_room_${code}`)
+      localChannel.onmessage = (event) => {
+        const data = event.data
+        if (data.type === 'PLAYER_JOIN' && data.player?.name && isHost) {
+          setPlayers((prev) => {
+            if (prev.some((p) => p.name.trim().toLowerCase() === data.player.name.trim().toLowerCase())) {
+              return prev
+            }
+            return [
+              ...prev,
+              {
+                id: data.player.id || Date.now(),
+                name: data.player.name.trim(),
+                isHost: false,
+              },
+            ]
+          })
+        } else if (data.type === 'GAME_START' && !isHost && onGameStartedByHost) {
+          onGameStartedByHost(data)
+        }
+      }
     } catch {
       // ignore
     }
 
-    if (channelRef.current) {
-      channelRef.current.postMessage({
-        type: 'LOBBY_UPDATE',
-        lobby: lobbyData,
-      })
+    return () => {
+      conn.disconnect()
+      if (localChannel) localChannel.close()
     }
-  }, [players, gameName, roomCode, totalPlayers, numImposters, hostName])
+  }, [roomCode, isHost, hostName, effectiveMyName, gameName, totalPlayers, numImposters, onGameStartedByHost])
+
+  // Periodic state heartbeat from host so newly arriving players catch the state quickly
+  useEffect(() => {
+    if (!isHost) return
+    const code = (roomCode || 'BARBADE').toUpperCase()
+    const interval = setInterval(() => {
+      if (connRef.current) {
+        connRef.current.publishState({
+          gameName,
+          roomCode: code,
+          totalPlayers,
+          numImposters,
+          hostName,
+          players,
+          status: 'WAITING',
+          updatedAt: Date.now(),
+        })
+      }
+    }, 2500)
+    return () => clearInterval(interval)
+  }, [isHost, roomCode, gameName, totalPlayers, numImposters, hostName, players])
 
   // Copy Room Code
   const handleCopyCode = async () => {
@@ -110,7 +172,6 @@ export default function LobbyScreen({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Fallback
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -129,73 +190,15 @@ export default function LobbyScreen({
     }
   }
 
-  // Native share if supported
-  const handleNativeShare = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Join Imposter Game: ${gameName}`,
-          text: `Join our Imposter game room with code ${roomCode}!`,
-          url: url,
-        })
-      } catch {
-        // ignore
-      }
-    } else {
-      handleCopyLink()
-    }
-  }
-
-  // Add demo test player
-  const handleAddDemoPlayer = () => {
-    if (players.length >= totalPlayers) return
-    const currentNames = new Set(players.map((p) => p.name.toLowerCase()))
-    const available = demoNamesPool.filter((n) => !currentNames.has(n.toLowerCase()))
-    const nextName = available[0] || `Player ${players.length + 1}`
-
-    setPlayers((prev) => [
-      ...prev,
-      { id: `demo_${Date.now()}_${Math.random()}`, name: nextName, isHost: false, isDemo: true },
-    ])
-  }
-
-  // Fill remaining slots for quick testing
-  const handleFillAllSlots = () => {
-    let current = [...players]
-    const currentNames = new Set(current.map((p) => p.name.toLowerCase()))
-    const available = demoNamesPool.filter((n) => !currentNames.has(n.toLowerCase()))
-
-    let poolIndex = 0
-    while (current.length < totalPlayers) {
-      const name = available[poolIndex] || `Player ${current.length + 1}`
-      current.push({
-        id: `demo_${Date.now()}_${Math.random()}`,
-        name: name,
-        isHost: false,
-        isDemo: true,
-      })
-      poolIndex++
-    }
-    setPlayers(current)
-  }
-
-  // Remove player
-  const handleRemovePlayer = (id) => {
-    setPlayers((prev) => prev.filter((p) => p.id !== id))
-  }
-
-  // Start game
+  // Host starts game
   const handleStart = () => {
-    if (players.length < 3) return
+    if (!isHost || players.length < 3) return
 
-    // Notify connected tabs
     const playerNames = players.map((p) => p.name)
     const code = (roomCode || 'BARBADE').toUpperCase()
 
-    // Assign roles
+    // Assign roles randomly
     const indices = Array.from({ length: playerNames.length }, (_, i) => i)
-    // shuffle
     for (let i = indices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[indices[i], indices[j]] = [indices[j], indices[i]]
@@ -216,26 +219,17 @@ export default function LobbyScreen({
       players: gamePlayersWithRoles,
     }
 
-    try {
-      localStorage.setItem(
-        `imposter_lobby_${code}`,
-        JSON.stringify({
-          status: 'IN_PROGRESS',
-          gameData: startPayload,
-        })
-      )
-    } catch {
-      // ignore
-    }
-
-    if (channelRef.current) {
-      channelRef.current.postMessage(startPayload)
+    if (connRef.current) {
+      connRef.current.publishEvent(startPayload)
+      connRef.current.publishState({
+        status: 'IN_PROGRESS',
+        gameData: startPayload,
+      })
     }
 
     onStartGame(gamePlayersWithRoles, secretWord)
   }
 
-  const isFull = players.length >= totalPlayers
   const canStart = players.length >= 3
 
   return (
@@ -345,15 +339,18 @@ export default function LobbyScreen({
             <div className="space-y-2">
               {Array.from({ length: totalPlayers }).map((_, index) => {
                 const player = players[index]
-                const isHost = index === 0
+                const isPlayerHost = index === 0
+                const isMe = player && player.name.trim().toLowerCase() === effectiveMyName.trim().toLowerCase()
 
                 return (
                   <div
                     key={index}
                     className={`p-3 rounded-xl flex items-center justify-between transition-all duration-200 border ${
                       player
-                        ? isHost
+                        ? isPlayerHost
                           ? 'bg-gradient-to-r from-purple-900/30 to-indigo-900/20 border-purple-500/30 shadow-sm'
+                          : isMe
+                          ? 'bg-purple-600/20 border-purple-500/40 shadow-sm'
                           : 'bg-bg-card-hover/50 border-border/60'
                         : 'border-dashed border-border/40 bg-bg-card/20 opacity-70'
                     }`}
@@ -362,13 +359,13 @@ export default function LobbyScreen({
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 ${
                           player
-                            ? isHost
+                            ? isPlayerHost
                               ? 'bg-purple-600/30 border border-purple-500/40 text-purple-300'
                               : 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-300'
                             : 'bg-bg-card border border-border/40 text-text-muted/40'
                         }`}
                       >
-                        {player ? (isHost ? '👑' : '🤠') : `${index + 1}`}
+                        {player ? (isPlayerHost ? '👑' : '🤠') : `${index + 1}`}
                       </div>
 
                       <div className="min-w-0">
@@ -377,9 +374,14 @@ export default function LobbyScreen({
                             <span className="font-bold text-sm text-text-primary truncate">
                               {player.name}
                             </span>
-                            {isHost && (
+                            {isPlayerHost && (
                               <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                Host / You
+                                {isMe ? 'Host / You' : 'Host'}
+                              </span>
+                            )}
+                            {!isPlayerHost && isMe && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                You
                               </span>
                             )}
                           </div>
@@ -392,23 +394,12 @@ export default function LobbyScreen({
                       </div>
                     </div>
 
-                    {/* Status Badge or Remove demo */}
+                    {/* Status Badge */}
                     <div>
                       {player ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-                            Ready ✓
-                          </span>
-                          {player.isDemo && (
-                            <button
-                              onClick={() => handleRemovePlayer(player.id)}
-                              className="w-6 h-6 rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 text-red-400 text-xs flex items-center justify-center transition-colors"
-                              title="Remove test player"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                          Ready ✓
+                        </span>
                       ) : (
                         <span className="text-[11px] text-text-muted/60 font-mono">
                           Slot #{index + 1}
@@ -418,29 +409,6 @@ export default function LobbyScreen({
                   </div>
                 )
               })}
-            </div>
-
-            {/* Quick Testing Controls (Bots / Demo Players) */}
-            <div className="mt-4 pt-3 border-t border-border/40 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] text-text-muted">
-                Testing solo? Add test players:
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleAddDemoPlayer}
-                  disabled={isFull}
-                  className="px-2.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  + Add Demo Player
-                </button>
-                <button
-                  onClick={handleFillAllSlots}
-                  disabled={isFull}
-                  className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  ⚡ Fill All Slots
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -462,20 +430,29 @@ export default function LobbyScreen({
             )}
           </div>
 
-          {/* Start Game Button (Green bar) */}
-          <button
-            onClick={handleStart}
-            disabled={!canStart}
-            className={`w-full py-4 text-lg tracking-wide rounded-xl font-bold transition-all duration-200 ${
-              canStart
-                ? 'btn-success animate-pulse-glow shadow-lg shadow-emerald-950/50 hover:brightness-110 active:scale-[0.98]'
-                : 'bg-bg-card text-text-muted border border-border cursor-not-allowed'
-            }`}
-          >
-            {canStart
-              ? `🎮 Start Round (${players.length}/${totalPlayers} Players) →`
-              : `Waiting for at least 3 players (${players.length}/${totalPlayers})`}
-          </button>
+          {/* Action button: Host has Start Game, Player has waiting status */}
+          {isHost ? (
+            <button
+              onClick={handleStart}
+              disabled={!canStart}
+              className={`w-full py-4 text-lg tracking-wide rounded-xl font-bold transition-all duration-200 ${
+                canStart
+                  ? 'btn-success animate-pulse-glow shadow-lg shadow-emerald-950/50 hover:brightness-110 active:scale-[0.98]'
+                  : 'bg-bg-card text-text-muted border border-border cursor-not-allowed'
+              }`}
+            >
+              {canStart
+                ? `🎮 Start Round (${players.length}/${totalPlayers} Players) →`
+                : `Waiting for at least 3 players (${players.length}/${totalPlayers})`}
+            </button>
+          ) : (
+            <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center animate-pulse">
+              <span className="text-purple-300 font-semibold text-sm flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                Waiting for Host ({hostName}) to start the game...
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -486,7 +463,9 @@ export default function LobbyScreen({
             <span className="text-3xl">⚠️</span>
             <h3 className="text-lg font-bold text-white">Exit Lobby?</h3>
             <p className="text-xs text-text-secondary leading-relaxed">
-              Exiting will close the lobby for connected players.
+              {isHost
+                ? 'Exiting will close the lobby for connected players.'
+                : 'Are you sure you want to leave this lobby?'}
             </p>
             <div className="flex gap-2 pt-2">
               <button

@@ -4,7 +4,7 @@ export default function SetupScreen({ onNext, onBack, isOnline = false, initialC
   const [gameName, setGameName] = useState('')
   const [totalPlayers, setTotalPlayers] = useState(4)
   const [numImposters, setNumImposters] = useState(1)
-  const [roomCode, setRoomCode] = useState(initialCode || 'BARBADE')
+  const [roomCode, setRoomCode] = useState(initialCode || '')
   const [error, setError] = useState('')
 
   const randomCodes = ['BARBADE', 'SPYWARS', 'PHANTOM', 'MYSTERY', 'SHADOW7', 'CIPHER9', 'INTRUDE']
