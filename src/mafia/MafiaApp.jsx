@@ -37,9 +37,11 @@ export function MafiaApp() {
   const {
     isMock,
     isSpeaking,
+    participantsMap,
     toggleMic,
     toggleCam,
     unlockAudio,
+    enableLocalMedia,
     toggleSimulateSpeaking,
   } = useLiveKitRoom(livekitAuth, playerId)
 
@@ -322,7 +324,10 @@ export function MafiaApp() {
           roomCode={roomState.code}
           isMock={isMock}
           unlockAudio={unlockAudio}
-          onJoinTable={() => setHasPassedGreenRoom(true)}
+          onJoinTable={async ({ micEnabled, camEnabled }) => {
+            setHasPassedGreenRoom(true)
+            await enableLocalMedia({ mic: micEnabled, cam: camEnabled })
+          }}
         />
       )}
 
@@ -360,6 +365,7 @@ export function MafiaApp() {
             onVote={handleDayVote}
             selectedTargetId={selectedTargetId}
             selectedVoteId={selectedVoteId}
+            participantsMap={participantsMap}
           />
 
           {/* Night Bottom Action Bar */}

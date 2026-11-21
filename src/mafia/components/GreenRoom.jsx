@@ -10,22 +10,28 @@ export function GreenRoom({
 }) {
   const [micEnabled, setMicEnabled] = useState(true)
   const [camEnabled, setCamEnabled] = useState(true)
+  const [mediaStream, setMediaStream] = useState(null)
   const videoRef = useRef(null)
   const streamRef = useRef(null)
 
   useEffect(() => {
-    // Request local media preview if not in mock mode or for browser permission check
+    let isCancelled = false
+
     async function initPreview() {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 480, height: 360 },
+            video: { width: 640, height: 360, frameRate: 20 },
             audio: true,
           })
-          streamRef.current = stream
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream
+
+          if (isCancelled) {
+            stream.getTracks().forEach((track) => track.stop())
+            return
           }
+
+          streamRef.current = stream
+          setMediaStream(stream)
         }
       } catch (err) {
         console.warn('[GreenRoom] Local cam preview unavailable or denied:', err.message)
@@ -35,17 +41,41 @@ export function GreenRoom({
     initPreview()
 
     return () => {
+      isCancelled = true
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
       }
     }
   }, [])
 
+  // Ensure video element plays the stream whenever stream or camEnabled changes
+  useEffect(() => {
+    if (videoRef.current && mediaStream && camEnabled) {
+      videoRef.current.srcObject = mediaStream
+      videoRef.current.play().catch((err) => {
+        console.log('[GreenRoom] Autoplay prevented, waiting for user interaction:', err.message)
+      })
+    }
+  }, [mediaStream, camEnabled])
+
   const handleJoin = async () => {
+    // 1. Release local preview stream so webcam is freed for LiveKit on Windows
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+    setMediaStream(null)
+
+    // 2. Unlock mobile audio
     if (unlockAudio) {
       await unlockAudio()
     }
-    onJoinTable({ micEnabled, camEnabled })
+
+    // 3. Small pause to ensure OS camera lock is released before LiveKit connects
+    setTimeout(() => {
+      onJoinTable({ micEnabled, camEnabled })
+    }, 150)
   }
 
   return (
@@ -72,6 +102,7 @@ export function GreenRoom({
               autoPlay
               playsInline
               muted
+              onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
               className="w-full h-full object-cover transform scale-x-[-1]"
             />
           ) : (

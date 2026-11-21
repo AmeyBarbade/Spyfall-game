@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Mic,
   MicOff,
@@ -30,16 +30,34 @@ export function PlayerTile({
   livekitParticipant,
 }) {
   const videoRef = useRef(null)
+  const [hasVideoTrack, setHasVideoTrack] = useState(false)
 
   // Attach LiveKit video track if available
   useEffect(() => {
-    if (!livekitParticipant || !videoRef.current) return
-    const publication = livekitParticipant.videoTrackPublications?.values().next().value
-    if (publication && publication.track) {
-      publication.track.attach(videoRef.current)
-      return () => {
-        publication.track.detach()
+    if (!livekitParticipant || !videoRef.current) {
+      setHasVideoTrack(false)
+      return
+    }
+
+    let trackToAttach = null
+    if (livekitParticipant.videoTrackPublications) {
+      for (const pub of livekitParticipant.videoTrackPublications.values()) {
+        if (pub.track) {
+          trackToAttach = pub.track
+          break
+        }
       }
+    }
+
+    if (trackToAttach && videoRef.current) {
+      trackToAttach.attach(videoRef.current)
+      setHasVideoTrack(true)
+      return () => {
+        trackToAttach.detach(videoRef.current)
+        setHasVideoTrack(false)
+      }
+    } else {
+      setHasVideoTrack(false)
     }
   }, [livekitParticipant])
 
@@ -142,12 +160,12 @@ export function PlayerTile({
           playsInline
           muted={isSelf}
           className={`w-full h-full object-cover transform scale-x-[-1] ${
-            !livekitParticipant ? 'hidden' : 'block'
+            !hasVideoTrack || !isAlive ? 'hidden' : 'block'
           }`}
         />
 
         {/* Fallback Styled Avatar */}
-        {(!livekitParticipant || !isAlive) && (
+        {(!hasVideoTrack || !isAlive) && (
           <div
             className={`w-full h-full bg-gradient-to-br ${getAvatarGradient(
               player.name
