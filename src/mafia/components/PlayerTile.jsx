@@ -32,31 +32,62 @@ export function PlayerTile({
   const videoRef = useRef(null)
   const [hasVideoTrack, setHasVideoTrack] = useState(false)
 
-  // Attach LiveKit video track if available
+  // Attach LiveKit video track dynamically with event listeners
   useEffect(() => {
     if (!livekitParticipant || !videoRef.current) {
       setHasVideoTrack(false)
       return
     }
 
-    let trackToAttach = null
-    if (livekitParticipant.videoTrackPublications) {
-      for (const pub of livekitParticipant.videoTrackPublications.values()) {
-        if (pub.track) {
-          trackToAttach = pub.track
-          break
+    const attachBestTrack = () => {
+      let trackToAttach = null
+      if (livekitParticipant.videoTrackPublications) {
+        for (const pub of livekitParticipant.videoTrackPublications.values()) {
+          if (pub.track) {
+            trackToAttach = pub.track
+            break
+          }
         }
+      }
+
+      if (trackToAttach && videoRef.current) {
+        trackToAttach.attach(videoRef.current)
+        setHasVideoTrack(true)
+      } else {
+        setHasVideoTrack(false)
       }
     }
 
-    if (trackToAttach && videoRef.current) {
-      trackToAttach.attach(videoRef.current)
-      setHasVideoTrack(true)
-      return () => {
-        trackToAttach.detach(videoRef.current)
-        setHasVideoTrack(false)
+    // Attach immediately if track is already available
+    attachBestTrack()
+
+    // Listen to participant's track publication/subscription events
+    livekitParticipant.on('trackSubscribed', attachBestTrack)
+    livekitParticipant.on('trackUnsubscribed', attachBestTrack)
+    livekitParticipant.on('trackPublished', attachBestTrack)
+    livekitParticipant.on('trackUnpublished', attachBestTrack)
+    livekitParticipant.on('trackMuted', attachBestTrack)
+    livekitParticipant.on('trackUnmuted', attachBestTrack)
+    livekitParticipant.on('localTrackPublished', attachBestTrack)
+    livekitParticipant.on('localTrackUnpublished', attachBestTrack)
+
+    return () => {
+      livekitParticipant.off('trackSubscribed', attachBestTrack)
+      livekitParticipant.off('trackUnsubscribed', attachBestTrack)
+      livekitParticipant.off('trackPublished', attachBestTrack)
+      livekitParticipant.off('trackUnpublished', attachBestTrack)
+      livekitParticipant.off('trackMuted', attachBestTrack)
+      livekitParticipant.off('trackUnmuted', attachBestTrack)
+      livekitParticipant.off('localTrackPublished', attachBestTrack)
+      livekitParticipant.off('localTrackUnpublished', attachBestTrack)
+
+      if (videoRef.current && livekitParticipant.videoTrackPublications) {
+        for (const pub of livekitParticipant.videoTrackPublications.values()) {
+          if (pub.track) {
+            pub.track.detach(videoRef.current)
+          }
+        }
       }
-    } else {
       setHasVideoTrack(false)
     }
   }, [livekitParticipant])
@@ -159,7 +190,7 @@ export function PlayerTile({
           autoPlay
           playsInline
           muted={isSelf}
-          className={`w-full h-full object-cover transform scale-x-[-1] ${
+          className={`w-full h-full object-cover ${isSelf ? 'transform scale-x-[-1]' : ''} ${
             !hasVideoTrack || !isAlive ? 'hidden' : 'block'
           }`}
         />

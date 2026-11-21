@@ -11,6 +11,7 @@ export function useLiveKitRoom(livekitAuth, localPlayerId) {
   const [error, setError] = useState(null)
 
   const roomRef = useRef(null)
+  const mediaRequestedRef = useRef(null)
   const isMock = !livekitAuth?.livekitEnabled || !livekitAuth?.token
 
   useEffect(() => {
@@ -65,8 +66,19 @@ export function useLiveKitRoom(livekitAuth, localPlayerId) {
 
     room.on(RoomEvent.ParticipantConnected, updateParticipants)
     room.on(RoomEvent.ParticipantDisconnected, updateParticipants)
-    room.on(RoomEvent.TrackSubscribed, updateParticipants)
-    room.on(RoomEvent.TrackUnsubscribed, updateParticipants)
+    room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      if (track.kind === 'audio') {
+        const audioEl = track.attach()
+        audioEl.style.display = 'none'
+      }
+      updateParticipants()
+    })
+    room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+      if (track.kind === 'audio') {
+        track.detach()
+      }
+      updateParticipants()
+    })
     room.on(RoomEvent.LocalTrackPublished, updateParticipants)
     room.on(RoomEvent.LocalTrackUnpublished, updateParticipants)
     room.on(RoomEvent.TrackMuted, updateParticipants)
@@ -74,9 +86,21 @@ export function useLiveKitRoom(livekitAuth, localPlayerId) {
 
     room
       .connect(livekitAuth.url, livekitAuth.token)
-      .then(() => {
-        console.log('[LiveKit] Connected. Waiting for table entry to start camera/mic.')
+      .then(async () => {
+        console.log('[LiveKit] Connected to SFU.')
         updateParticipants()
+
+        // If media was requested before connect completed
+        if (mediaRequestedRef.current) {
+          const { mic, cam } = mediaRequestedRef.current
+          try {
+            if (cam) await room.localParticipant.setCameraEnabled(true)
+            if (mic) await room.localParticipant.setMicrophoneEnabled(true)
+            updateParticipants()
+          } catch (e) {
+            console.warn('[LiveKit] Auto-enable media warning:', e)
+          }
+        }
       })
       .catch((err) => {
         console.error('[LiveKit] Connection error:', err)
@@ -91,18 +115,23 @@ export function useLiveKitRoom(livekitAuth, localPlayerId) {
 
   // Explicitly enable camera & mic when entering table (or toggled)
   const enableLocalMedia = useCallback(async ({ mic = true, cam = true } = {}) => {
-    if (!roomRef.current?.localParticipant) return
+    mediaRequestedRef.current = { mic, cam }
+    const local = roomRef.current?.localParticipant
+    if (!local) {
+      console.log('[LiveKit] Room not connected yet. Saved media request for onConnect.')
+      return
+    }
+
     try {
       console.log('[LiveKit] Enabling local media: mic =', mic, 'cam =', cam)
       if (cam) {
-        await roomRef.current.localParticipant.setCameraEnabled(true)
+        await local.setCameraEnabled(true)
         setIsCamMuted(false)
       }
       if (mic) {
-        await roomRef.current.localParticipant.setMicrophoneEnabled(true)
+        await local.setMicrophoneEnabled(true)
         setIsMicMuted(false)
       }
-      // Trigger participant update so UI attaches local track
       if (roomRef.current) {
         const map = {}
         if (roomRef.current.localParticipant) {
