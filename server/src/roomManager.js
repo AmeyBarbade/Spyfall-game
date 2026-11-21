@@ -13,7 +13,7 @@ function generateRoomCode() {
 }
 
 export class Room {
-  constructor(code, hostPlayerName, io) {
+  constructor(code, hostPlayerName, io, initialSettings = {}) {
     this.code = code
     this.io = io
     this.hostId = null
@@ -33,6 +33,9 @@ export class Room {
       doctorConsecutiveSave: false, // false = disallowed, true = allowed
       cameraRequired: false,
       allowDevMode: false, // allows 3 players for local testing
+      mafiaCount: 'auto', // 'auto', 1, 2, 3
+      doctorCount: 'auto', // 'auto', 0, 1, 2
+      ...initialSettings,
     }
 
     // Players: Map<playerId, PlayerObject>
@@ -162,7 +165,7 @@ export class RoomManager {
     setInterval(() => this.cleanupIdleRooms(), 60000)
   }
 
-  createRoom(hostPlayerName) {
+  createRoom(hostPlayerName, initialSettings = {}) {
     let code = generateRoomCode()
     let attempts = 0
     while (this.rooms.has(code) && attempts < 10) {
@@ -170,7 +173,7 @@ export class RoomManager {
       attempts++
     }
 
-    const room = new Room(code, hostPlayerName, this.io)
+    const room = new Room(code, hostPlayerName, this.io, initialSettings)
     const hostPlayer = room.addPlayer(hostPlayerName, true)
     this.rooms.set(code, room)
 

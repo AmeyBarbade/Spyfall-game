@@ -167,6 +167,50 @@ export function LobbyControls({
             </div>
 
             <div className="flex flex-col gap-4 text-sm">
+              {/* Mafia Count */}
+              <div>
+                <label className="font-semibold text-stone-800 dark:text-stone-200 flex items-center gap-1.5 mb-1.5">
+                  <span className="text-red-500 font-black">🎭</span> Number of Mafia
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['auto', 1, 2, 3].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => onUpdateSettings({ mafiaCount: val })}
+                      className={`py-1.5 rounded-lg font-medium text-xs border transition-all ${
+                        (settings.mafiaCount || 'auto') === val
+                          ? 'border-red-600 bg-red-500/15 text-red-600 dark:text-red-400 font-bold'
+                          : 'border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300'
+                      }`}
+                    >
+                      {val === 'auto' ? 'Auto (Scale)' : `${val} Mafia`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Doctor Count */}
+              <div>
+                <label className="font-semibold text-stone-800 dark:text-stone-200 flex items-center gap-1.5 mb-1.5">
+                  <span className="text-emerald-500 font-black">🛡️</span> Number of Doctors
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['auto', 0, 1, 2].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => onUpdateSettings({ doctorCount: val })}
+                      className={`py-1.5 rounded-lg font-medium text-xs border transition-all ${
+                        (settings.doctorCount || 'auto') === val
+                          ? 'border-emerald-600 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                          : 'border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300'
+                      }`}
+                    >
+                      {val === 'auto' ? 'Auto' : `${val} Doctor`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Day Discussion Timer */}
               <div>
                 <label className="font-semibold text-stone-800 dark:text-stone-200 flex items-center gap-1.5 mb-1.5">

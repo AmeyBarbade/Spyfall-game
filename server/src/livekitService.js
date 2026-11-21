@@ -1,7 +1,10 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import dotenv from 'dotenv'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
-dotenv.config()
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
 const LIVEKIT_URL = process.env.LIVEKIT_URL || ''
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || ''

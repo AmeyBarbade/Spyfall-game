@@ -3,10 +3,13 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { RoomManager } from './roomManager.js'
 import { isLiveKitConfigured } from './livekitService.js'
 
-dotenv.config()
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
 const PORT = process.env.PORT || 3001
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173'
@@ -39,14 +42,14 @@ io.on('connection', (socket) => {
   let boundPlayerId = null
 
   // 1. Create room
-  socket.on('room:create', async ({ playerName }, callback) => {
+  socket.on('room:create', async ({ playerName, initialSettings }, callback) => {
     try {
       if (!playerName || !playerName.trim()) {
         return callback?.({ error: 'Player name is required.' })
       }
 
       const cleanName = playerName.trim().slice(0, 16)
-      const { room, hostPlayer } = roomManager.createRoom(cleanName)
+      const { room, hostPlayer } = roomManager.createRoom(cleanName, initialSettings)
 
       boundRoomCode = room.code
       boundPlayerId = hostPlayer.id

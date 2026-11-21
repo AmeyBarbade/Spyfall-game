@@ -78,10 +78,10 @@ export function useGameSocket() {
   }, [])
 
   // Create room
-  const createRoom = useCallback((playerName) => {
+  const createRoom = useCallback((playerName, initialSettings = {}) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) return reject(new Error('Socket not connected'))
-      socketRef.current.emit('room:create', { playerName }, (res) => {
+      socketRef.current.emit('room:create', { playerName, initialSettings }, (res) => {
         if (res?.success) {
           setRoomCode(res.roomCode)
           setPlayerId(res.playerId)

@@ -7,23 +7,28 @@ export function getRoleDistribution(playerCount, settings = {}) {
   let mafiaCount = 1
   let doctorCount = 1
 
-  if (playerCount < 5) {
-    // Dev mode / small lobby testing: 1 Mafia, 1 Doctor, rest Villagers (or min 1 Villager)
-    mafiaCount = 1
-    doctorCount = playerCount >= 3 ? 1 : 0
-  } else if (playerCount === 5) {
-    mafiaCount = 1
-    doctorCount = 1
-  } else if (playerCount >= 6 && playerCount <= 8) {
-    mafiaCount = 2
-    doctorCount = 1
-  } else if (playerCount === 9) {
-    mafiaCount = settings.extraMafiaAt9 ? 3 : 2
-    doctorCount = 1
+  // Custom host settings support
+  if (settings.mafiaCount !== undefined && settings.mafiaCount !== 'auto') {
+    mafiaCount = Math.min(Number(settings.mafiaCount), Math.max(1, Math.floor((playerCount - 1) / 2)))
   } else {
-    // 10 - 12 players
-    mafiaCount = 3
-    doctorCount = 1
+    // Default balanced scaling
+    if (playerCount < 5) {
+      mafiaCount = 1
+    } else if (playerCount === 5) {
+      mafiaCount = 1
+    } else if (playerCount >= 6 && playerCount <= 8) {
+      mafiaCount = 2
+    } else if (playerCount === 9) {
+      mafiaCount = settings.extraMafiaAt9 ? 3 : 2
+    } else {
+      mafiaCount = 3
+    }
+  }
+
+  if (settings.doctorCount !== undefined && settings.doctorCount !== 'auto') {
+    doctorCount = Math.min(Number(settings.doctorCount), Math.max(0, playerCount - mafiaCount - 1))
+  } else {
+    doctorCount = playerCount >= 3 ? 1 : 0
   }
 
   const villagerCount = Math.max(0, playerCount - mafiaCount - doctorCount)

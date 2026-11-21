@@ -49,6 +49,9 @@ export function MafiaApp() {
   const [hasPassedGreenRoom, setHasPassedGreenRoom] = useState(false)
   const [selectedTargetId, setSelectedTargetId] = useState(null)
   const [selectedVoteId, setSelectedVoteId] = useState(null)
+  const [showRoleOptions, setShowRoleOptions] = useState(false)
+  const [customMafiaCount, setCustomMafiaCount] = useState('auto')
+  const [customDoctorCount, setCustomDoctorCount] = useState('auto')
 
   // Auto-fill join code from URL params ?room=CODE
   useEffect(() => {
@@ -82,7 +85,10 @@ export function MafiaApp() {
     }
     handleSaveName(playerNameInput.trim())
     try {
-      await createRoom(playerNameInput.trim())
+      await createRoom(playerNameInput.trim(), {
+        mafiaCount: customMafiaCount,
+        doctorCount: customDoctorCount,
+      })
     } catch (err) {
       console.error(err)
     }
@@ -199,6 +205,72 @@ export function MafiaApp() {
                 placeholder="e.g. Vito, Tony, Mia..."
                 className="w-full px-4 py-3 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-stone-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
+            </div>
+
+            {/* Role Customization Options */}
+            <div className="bg-stone-50 dark:bg-stone-900/60 rounded-xl p-3 border border-stone-200 dark:border-stone-800 flex flex-col gap-2.5">
+              <div
+                onClick={() => setShowRoleOptions(!showRoleOptions)}
+                className="flex items-center justify-between cursor-pointer select-none"
+              >
+                <span className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                  <span>⚙️</span> Room Role Settings {showRoleOptions ? '▲' : '▼'}
+                </span>
+                <span className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold">
+                  {customMafiaCount === 'auto' ? 'Auto Mafia' : `${customMafiaCount} Mafia`} •{' '}
+                  {customDoctorCount === 'auto' ? 'Auto Doc' : `${customDoctorCount} Doc`}
+                </span>
+              </div>
+
+              {showRoleOptions && (
+                <div className="flex flex-col gap-3 pt-2 border-t border-stone-200 dark:border-stone-800 animate-fade-in text-xs">
+                  {/* Mafia Selection */}
+                  <div>
+                    <label className="font-semibold text-stone-600 dark:text-stone-400 block mb-1">
+                      🎭 Mafia Count:
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {['auto', 1, 2, 3].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setCustomMafiaCount(val)}
+                          className={`py-1.5 rounded-lg font-bold text-xs border transition-all ${
+                            customMafiaCount === val
+                              ? 'bg-red-600 text-white border-red-500 shadow-sm'
+                              : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                          }`}
+                        >
+                          {val === 'auto' ? 'Auto' : val}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Doctor Selection */}
+                  <div>
+                    <label className="font-semibold text-stone-600 dark:text-stone-400 block mb-1">
+                      🛡️ Doctor Count:
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {['auto', 0, 1, 2].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setCustomDoctorCount(val)}
+                          className={`py-1.5 rounded-lg font-bold text-xs border transition-all ${
+                            customDoctorCount === val
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                              : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                          }`}
+                        >
+                          {val === 'auto' ? 'Auto' : val}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Create Room Button */}
