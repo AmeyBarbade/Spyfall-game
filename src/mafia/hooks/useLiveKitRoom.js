@@ -166,10 +166,32 @@ export function useLiveKitRoom(livekitAuth, localPlayerId) {
       return
     }
 
-    if (roomRef.current?.localParticipant) {
-      const next = !isMicMuted
-      await roomRef.current.localParticipant.setMicrophoneEnabled(!next)
-      setIsMicMuted(next)
+    const local = roomRef.current?.localParticipant
+    if (local) {
+      const nextMuted = !isMicMuted
+      setIsMicMuted(nextMuted) // Instant UI feedback
+
+      try {
+        if (local.audioTrackPublications) {
+          const pubs = typeof local.audioTrackPublications.values === 'function'
+            ? Array.from(local.audioTrackPublications.values())
+            : Object.values(local.audioTrackPublications)
+          for (const pub of pubs) {
+            if (pub?.track) {
+              if (nextMuted) {
+                pub.track.mute()
+              } else {
+                pub.track.unmute()
+              }
+            }
+          }
+        }
+        await local.setMicrophoneEnabled(!nextMuted)
+      } catch (err) {
+        console.warn('[LiveKit] toggleMic warning:', err)
+      }
+    } else {
+      setIsMicMuted((prev) => !prev)
     }
   }, [isMock, isMicMuted])
 
@@ -180,10 +202,32 @@ export function useLiveKitRoom(livekitAuth, localPlayerId) {
       return
     }
 
-    if (roomRef.current?.localParticipant) {
-      const next = !isCamMuted
-      await roomRef.current.localParticipant.setCameraEnabled(!next)
-      setIsCamMuted(next)
+    const local = roomRef.current?.localParticipant
+    if (local) {
+      const nextMuted = !isCamMuted
+      setIsCamMuted(nextMuted) // Instant UI feedback
+
+      try {
+        if (local.videoTrackPublications) {
+          const pubs = typeof local.videoTrackPublications.values === 'function'
+            ? Array.from(local.videoTrackPublications.values())
+            : Object.values(local.videoTrackPublications)
+          for (const pub of pubs) {
+            if (pub?.track) {
+              if (nextMuted) {
+                pub.track.mute()
+              } else {
+                pub.track.unmute()
+              }
+            }
+          }
+        }
+        await local.setCameraEnabled(!nextMuted)
+      } catch (err) {
+        console.warn('[LiveKit] toggleCam warning:', err)
+      }
+    } else {
+      setIsCamMuted((prev) => !prev)
     }
   }, [isMock, isCamMuted])
 
