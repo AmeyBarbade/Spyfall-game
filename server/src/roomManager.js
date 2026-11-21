@@ -47,6 +47,27 @@ export class Room {
     // Disconnect timers: Map<playerId, timeoutId>
     this.disconnectTimers = new Map()
 
+    // State initialization
+    this.readyToVote = new Set()
+    this.votes = new Map()
+    this.nightActions = {
+      mafiaTargets: new Map(),
+      mafiaConsensusTarget: null,
+      doctorTarget: null,
+      villagerNotes: new Map(),
+    }
+    this.doctorState = {
+      lastSavedId: null,
+      selfSaveUsed: false,
+    }
+    this.lastNightResult = null
+    this.lastExecutionTally = null
+    this.lastExecutedId = null
+    this.winner = null
+    this.winReason = null
+    this.timeline = []
+    this.gameLog = []
+
     this.fsm = new GameStateMachine(this, io)
   }
 

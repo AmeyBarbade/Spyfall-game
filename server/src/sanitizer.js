@@ -55,10 +55,10 @@ export function sanitizeStateForPlayer(room, recipientPlayerId) {
   let doctorStatus = null
   if (recipient && recipient.role === 'DOCTOR') {
     doctorStatus = {
-      lastSavedId: room.doctorState.lastSavedId,
-      selfSaveUsed: room.doctorState.selfSaveUsed,
-      canSelfSave: room.settings.doctorSelfSaveRule === 'unlimited' || 
-        (room.settings.doctorSelfSaveRule === 'once' && !room.doctorState.selfSaveUsed),
+      lastSavedId: room.doctorState?.lastSavedId || null,
+      selfSaveUsed: !!room.doctorState?.selfSaveUsed,
+      canSelfSave: room.settings?.doctorSelfSaveRule === 'unlimited' || 
+        (room.settings?.doctorSelfSaveRule === 'once' && !room.doctorState?.selfSaveUsed),
     }
   }
 
