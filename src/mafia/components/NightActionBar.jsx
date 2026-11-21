@@ -1,24 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Target, Shield, Eye, Lock, Clock, AlertTriangle, BellRing, Sparkles } from 'lucide-react'
-
-function playWarningAlarm() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'square'
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    osc.frequency.setValueAtTime(659, ctx.currentTime + 0.15)
-    gain.gain.setValueAtTime(0.2, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.3)
-  } catch {
-    // AudioContext blocked or unsupported
-  }
-}
 
 export function NightActionBar({
   localPlayer,
@@ -27,7 +8,6 @@ export function NightActionBar({
 }) {
   const [initialTimeLeft, setInitialTimeLeft] = useState(10)
   const [finalTimeLeft, setFinalTimeLeft] = useState(10)
-  const alarmIntervalRef = useRef(null)
 
   const phaseEndsAt = roomState?.phaseEndsAt
   const warningEndsAt = roomState?.nightWarningEndsAt || (phaseEndsAt ? phaseEndsAt - 10000 : null)
@@ -53,20 +33,6 @@ export function NightActionBar({
   const isActionRole = role === 'MAFIA' || role === 'DOCTOR'
   const isWarningActive = isServerWarning || initialTimeLeft === 0
 
-  // Sound alarm when final warning is active and player hasn't chosen
-  useEffect(() => {
-    if (isActionRole && !selectedTargetId && isWarningActive && finalTimeLeft > 0) {
-      playWarningAlarm()
-      alarmIntervalRef.current = setInterval(playWarningAlarm, 1800)
-    } else {
-      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current)
-    }
-
-    return () => {
-      if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current)
-    }
-  }, [isActionRole, selectedTargetId, isWarningActive, finalTimeLeft])
-
   if (!roomState || roomState.phase !== 'NIGHT') return null
 
   if (!localPlayer?.isAlive) {
@@ -82,25 +48,31 @@ export function NightActionBar({
   const doctorStatus = roomState.doctorStatus
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 flex flex-col">
-      {/* Flashing 10s Final Warning Alarm Banner for Mafia & Doctor */}
+    <>
+      {/* Ambient Flashy Screen Edge Glow: noticeable red pulsing vignette that never blocks clicks/touches */}
       {isActionRole && !selectedTargetId && isWarningActive && finalTimeLeft > 0 && (
-        <div className="bg-red-600 text-white font-black px-4 py-2 text-center text-xs sm:text-sm flex items-center justify-center gap-2 animate-bounce shadow-2xl border-t-2 border-red-400">
-          <BellRing className="w-5 h-5 animate-pulse text-amber-300" />
-          <span>
-            ⚠️ 10s FINAL WARNING! Choose your target now ({finalTimeLeft}s) or an innocent will be chosen randomly!
-          </span>
-        </div>
+        <div className="fixed inset-0 pointer-events-none z-20 border-[6px] sm:border-8 border-red-500/80 shadow-[inset_0_0_80px_rgba(239,68,68,0.4)] animate-pulse" />
       )}
 
-      {/* Main Night Action Bar */}
-      <div
-        className={`px-4 py-3 backdrop-blur-md shadow-2xl border-t transition-colors ${
-          isActionRole && !selectedTargetId && isWarningActive
-            ? 'bg-red-950/95 border-red-700/80 animate-pulse'
-            : 'bg-[#161B22]/95 border-stone-800/80'
-        }`}
-      >
+      <div className="fixed bottom-0 left-0 right-0 z-30 flex flex-col">
+        {/* Flashing 10s Final Warning Banner for Mafia & Doctor */}
+        {isActionRole && !selectedTargetId && isWarningActive && finalTimeLeft > 0 && (
+          <div className="bg-red-600 text-white font-black px-4 py-2 text-center text-xs sm:text-sm flex items-center justify-center gap-2 animate-bounce shadow-2xl border-t-2 border-red-400">
+            <BellRing className="w-5 h-5 animate-pulse text-amber-300" />
+            <span>
+              ⚠️ 10s FINAL WARNING! Choose your target now ({finalTimeLeft}s) or an innocent will be chosen randomly!
+            </span>
+          </div>
+        )}
+
+        {/* Main Night Action Bar */}
+        <div
+          className={`px-4 py-3 backdrop-blur-md shadow-2xl border-t transition-colors ${
+            isActionRole && !selectedTargetId && isWarningActive
+              ? 'bg-red-950/95 border-red-700/80'
+              : 'bg-[#161B22]/95 border-stone-800/80'
+          }`}
+        >
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 text-white">
           {/* Role Specific Instructions */}
           {role === 'MAFIA' && (
@@ -195,5 +167,6 @@ export function NightActionBar({
         </div>
       </div>
     </div>
+  </>
   )
 }

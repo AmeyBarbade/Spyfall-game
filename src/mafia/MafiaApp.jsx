@@ -57,6 +57,22 @@ export function MafiaApp() {
   const [showRoleOptions, setShowRoleOptions] = useState(false)
   const [customMafiaCount, setCustomMafiaCount] = useState('auto')
   const [customDoctorCount, setCustomDoctorCount] = useState('auto')
+  const [phaseSecondsLeft, setPhaseSecondsLeft] = useState(0)
+
+  // Countdown timer for active phase
+  useEffect(() => {
+    if (!roomState?.phaseEndsAt) {
+      setPhaseSecondsLeft(0)
+      return
+    }
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((roomState.phaseEndsAt - Date.now()) / 1000))
+      setPhaseSecondsLeft(remaining)
+    }
+    update()
+    const interval = setInterval(update, 500)
+    return () => clearInterval(interval)
+  }, [roomState?.phaseEndsAt])
 
   // Auto-fill join code from URL params ?room=CODE
   useEffect(() => {
@@ -337,6 +353,15 @@ export function MafiaApp() {
       {/* 3. IN-GAME / LOBBY TABLE */}
       {roomState && hasPassedGreenRoom && (
         <div className="flex-1 flex flex-col py-3">
+          {/* Day Voting 10s Flashy Ambient Edge Vignette: warns player to vote, completely non-blocking pointer-events-none */}
+          {roomState.phase === 'DAY_VOTING' &&
+            localPlayer?.isAlive &&
+            !selectedVoteId &&
+            phaseSecondsLeft <= 10 &&
+            phaseSecondsLeft > 0 && (
+              <div className="fixed inset-0 pointer-events-none z-20 border-[6px] sm:border-8 border-amber-500/80 shadow-[inset_0_0_80px_rgba(245,158,11,0.35)] animate-pulse" />
+            )}
+
           {/* Top Phase Editorial Banner */}
           <PhaseBanner
             roomState={roomState}
