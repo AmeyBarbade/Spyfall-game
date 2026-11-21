@@ -39,6 +39,8 @@ export function MafiaApp() {
     isMock,
     isSpeaking,
     participantsMap,
+    isMicMuted,
+    isCamMuted,
     toggleMic,
     toggleCam,
     unlockAudio,

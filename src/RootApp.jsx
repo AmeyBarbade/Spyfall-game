@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import App from './App.jsx'
 import { MafiaApp } from './mafia/MafiaApp.jsx'
+import { ErrorBoundary } from './mafia/components/ErrorBoundary.jsx'
 
 export default function RootApp() {
   const [activeTab, setActiveTab] = useState(() => {
@@ -62,7 +63,13 @@ export default function RootApp() {
 
       {/* Render Selected Game */}
       <div className="pt-12">
-        {activeTab === 'imposter' ? <App /> : <MafiaApp />}
+        {activeTab === 'imposter' ? (
+          <App />
+        ) : (
+          <ErrorBoundary>
+            <MafiaApp />
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   )

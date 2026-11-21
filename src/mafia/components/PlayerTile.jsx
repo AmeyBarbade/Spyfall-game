@@ -41,9 +41,14 @@ export function PlayerTile({
 
     const attachBestTrack = () => {
       let trackToAttach = null
-      if (livekitParticipant.videoTrackPublications) {
-        for (const pub of livekitParticipant.videoTrackPublications.values()) {
-          if (pub.track) {
+      if (livekitParticipant?.videoTrackPublications) {
+        const publications =
+          typeof livekitParticipant.videoTrackPublications.values === 'function'
+            ? Array.from(livekitParticipant.videoTrackPublications.values())
+            : Object.values(livekitParticipant.videoTrackPublications)
+
+        for (const pub of publications) {
+          if (pub?.track) {
             trackToAttach = pub.track
             break
           }
@@ -51,8 +56,13 @@ export function PlayerTile({
       }
 
       if (trackToAttach && videoRef.current) {
-        trackToAttach.attach(videoRef.current)
-        setHasVideoTrack(true)
+        try {
+          trackToAttach.attach(videoRef.current)
+          setHasVideoTrack(true)
+        } catch (err) {
+          console.warn('[PlayerTile] attach track error:', err)
+          setHasVideoTrack(false)
+        }
       } else {
         setHasVideoTrack(false)
       }
@@ -61,30 +71,43 @@ export function PlayerTile({
     // Attach immediately if track is already available
     attachBestTrack()
 
-    // Listen to participant's track publication/subscription events
-    livekitParticipant.on('trackSubscribed', attachBestTrack)
-    livekitParticipant.on('trackUnsubscribed', attachBestTrack)
-    livekitParticipant.on('trackPublished', attachBestTrack)
-    livekitParticipant.on('trackUnpublished', attachBestTrack)
-    livekitParticipant.on('trackMuted', attachBestTrack)
-    livekitParticipant.on('trackUnmuted', attachBestTrack)
-    livekitParticipant.on('localTrackPublished', attachBestTrack)
-    livekitParticipant.on('localTrackUnpublished', attachBestTrack)
+    // Listen to participant's track publication/subscription events safely
+    if (typeof livekitParticipant.on === 'function') {
+      livekitParticipant.on('trackSubscribed', attachBestTrack)
+      livekitParticipant.on('trackUnsubscribed', attachBestTrack)
+      livekitParticipant.on('trackPublished', attachBestTrack)
+      livekitParticipant.on('trackUnpublished', attachBestTrack)
+      livekitParticipant.on('trackMuted', attachBestTrack)
+      livekitParticipant.on('trackUnmuted', attachBestTrack)
+      livekitParticipant.on('localTrackPublished', attachBestTrack)
+      livekitParticipant.on('localTrackUnpublished', attachBestTrack)
+    }
 
     return () => {
-      livekitParticipant.off('trackSubscribed', attachBestTrack)
-      livekitParticipant.off('trackUnsubscribed', attachBestTrack)
-      livekitParticipant.off('trackPublished', attachBestTrack)
-      livekitParticipant.off('trackUnpublished', attachBestTrack)
-      livekitParticipant.off('trackMuted', attachBestTrack)
-      livekitParticipant.off('trackUnmuted', attachBestTrack)
-      livekitParticipant.off('localTrackPublished', attachBestTrack)
-      livekitParticipant.off('localTrackUnpublished', attachBestTrack)
+      if (typeof livekitParticipant.off === 'function') {
+        livekitParticipant.off('trackSubscribed', attachBestTrack)
+        livekitParticipant.off('trackUnsubscribed', attachBestTrack)
+        livekitParticipant.off('trackPublished', attachBestTrack)
+        livekitParticipant.off('trackUnpublished', attachBestTrack)
+        livekitParticipant.off('trackMuted', attachBestTrack)
+        livekitParticipant.off('trackUnmuted', attachBestTrack)
+        livekitParticipant.off('localTrackPublished', attachBestTrack)
+        livekitParticipant.off('localTrackUnpublished', attachBestTrack)
+      }
 
-      if (videoRef.current && livekitParticipant.videoTrackPublications) {
-        for (const pub of livekitParticipant.videoTrackPublications.values()) {
-          if (pub.track) {
-            pub.track.detach(videoRef.current)
+      if (videoRef.current && livekitParticipant?.videoTrackPublications) {
+        const publications =
+          typeof livekitParticipant.videoTrackPublications.values === 'function'
+            ? Array.from(livekitParticipant.videoTrackPublications.values())
+            : Object.values(livekitParticipant.videoTrackPublications)
+
+        for (const pub of publications) {
+          if (pub?.track) {
+            try {
+              pub.track.detach(videoRef.current)
+            } catch {
+              // ignore
+            }
           }
         }
       }
