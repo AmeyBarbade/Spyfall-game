@@ -38,6 +38,8 @@ export function VideoGrid({
             isTargetSelected={selectedTargetId === player.id}
             onVote={onVote}
             isVoteSelected={selectedVoteId === player.id}
+            mostSuspectedPlayerId={roomState.mostSuspectedPlayerId}
+            mostSuspectedCount={roomState.mostSuspectedCount}
             livekitParticipant={participantsMap[player.id]}
           />
         ))}

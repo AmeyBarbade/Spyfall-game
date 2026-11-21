@@ -27,6 +27,8 @@ export function PlayerTile({
   isTargetSelected,
   onVote,
   isVoteSelected,
+  mostSuspectedPlayerId,
+  mostSuspectedCount = 0,
   livekitParticipant,
 }) {
   const videoRef = useRef(null)
@@ -179,9 +181,17 @@ export function PlayerTile({
   } else if (isTargetSelected) {
     borderStyle = isLocalDoctor
       ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-xl shadow-emerald-500/30'
+      : localRole === 'VILLAGER'
+      ? 'border-indigo-400 ring-4 ring-indigo-500/60 shadow-xl shadow-indigo-600/40 animate-pulse'
       : 'border-red-500 ring-2 ring-red-500/50 shadow-xl shadow-red-500/30'
   } else if (isVoteSelected) {
     borderStyle = 'border-purple-600 ring-4 ring-purple-600/50 shadow-xl shadow-purple-600/30'
+  } else if (
+    (phase === 'DAY_DISCUSSION' || phase === 'DAY_VOTING' || phase === 'MORNING_REVEAL') &&
+    mostSuspectedPlayerId === player.id &&
+    isAlive
+  ) {
+    borderStyle = 'border-amber-400 ring-2 ring-amber-400/50 shadow-lg shadow-amber-500/20'
   }
 
   // Avatar background colors based on name hash
@@ -348,10 +358,25 @@ export function PlayerTile({
 
         {/* Villager Suspicion Note Marker */}
         {isAlive && isTargetSelected && localRole === 'VILLAGER' && (
-          <div className="px-2.5 py-1 rounded-lg bg-indigo-600/90 text-white font-semibold text-[10px] flex items-center gap-1 shadow-md">
-            <span>Suspicious</span>
+          <div className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xl border border-indigo-400/50 animate-bounce">
+            <Eye className="w-4 h-4 text-amber-300" />
+            <span>Suspected</span>
           </div>
         )}
+
+        {/* Most Suspected Tag from Night Whispers (visible in Day Discussion & Voting) */}
+        {isAlive &&
+          (phase === 'DAY_DISCUSSION' || phase === 'DAY_VOTING' || phase === 'MORNING_REVEAL') &&
+          mostSuspectedPlayerId === player.id && (
+            <div className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 text-white font-black text-[11px] tracking-wide uppercase flex items-center gap-1.5 shadow-xl shadow-amber-950/40 border border-amber-300/40 animate-pulse">
+              <span>🕵️ Most Suspected</span>
+              {mostSuspectedCount > 1 && (
+                <span className="bg-black/30 px-1.5 py-0.2 rounded-full text-[9px]">
+                  {mostSuspectedCount}
+                </span>
+              )}
+            </div>
+          )}
 
         {/* Day Voting Selected */}
         {isAlive && isVoteSelected && (

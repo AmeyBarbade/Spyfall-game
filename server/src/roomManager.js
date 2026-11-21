@@ -63,6 +63,8 @@ export class Room {
     this.lastNightResult = null
     this.lastExecutionTally = null
     this.lastExecutedId = null
+    this.mostSuspectedPlayerId = null
+    this.mostSuspectedCount = 0
     this.winner = null
     this.winReason = null
     this.timeline = []

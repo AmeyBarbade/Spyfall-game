@@ -107,6 +107,8 @@ export function sanitizeStateForPlayer(room, recipientPlayerId) {
     winner: room.winner || null,
     winReason: room.winReason || null,
     lastNightResult: room.lastNightResult || null,
+    mostSuspectedPlayerId: room.mostSuspectedPlayerId || null,
+    mostSuspectedCount: room.mostSuspectedCount || 0,
     gameLog: isGameOver ? room.gameLog : undefined,
     timeline: isGameOver ? room.timeline : undefined,
     mafiaTargetSync,

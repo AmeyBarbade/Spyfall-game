@@ -94,6 +94,8 @@ export class GameStateMachine {
     this.room.lastNightResult = null
     this.room.lastExecutionTally = null
     this.room.lastExecutedId = null
+    this.room.mostSuspectedPlayerId = null
+    this.room.mostSuspectedCount = 0
     this.room.winner = null
     this.room.winReason = null
     this.room.timeline = []
@@ -327,6 +329,26 @@ export class GameStateMachine {
       victimName: killedPlayerId ? this.room.players.get(killedPlayerId)?.name : null,
       saved: wasSaved,
     }
+
+    // 3. Resolve Civilian Night Whispers (Most Suspected Player)
+    const suspectCounts = {}
+    if (this.room.nightActions?.villagerNotes) {
+      for (const targetId of this.room.nightActions.villagerNotes.values()) {
+        if (targetId) {
+          suspectCounts[targetId] = (suspectCounts[targetId] || 0) + 1
+        }
+      }
+    }
+    let topSuspectId = null
+    let maxSuspectCount = 0
+    for (const [targetId, count] of Object.entries(suspectCounts)) {
+      if (count > maxSuspectCount) {
+        maxSuspectCount = count
+        topSuspectId = targetId
+      }
+    }
+    this.room.mostSuspectedPlayerId = maxSuspectCount > 0 ? topSuspectId : null
+    this.room.mostSuspectedCount = maxSuspectCount
 
     const currentPhaseId = this.room.phaseId
     this.timer = setTimeout(() => {

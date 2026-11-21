@@ -71,20 +71,28 @@ export function PhaseBanner({ roomState, localPlayerId, onReadyToVote }) {
             : 'The city slept peacefully.',
           bg: 'bg-amber-950/40 border-amber-800/40 text-amber-200',
         }
-      case 'DAY_DISCUSSION':
+      case 'DAY_DISCUSSION': {
+        const topSuspect = roomState?.players?.find((p) => p.id === roomState?.mostSuspectedPlayerId)
         return {
           icon: <Sun className="w-5 h-5 text-amber-500" />,
           title: `Day ${round}: Town Discussion`,
-          subtitle: 'Open debate. Unmuted. Discuss who is suspicious!',
+          subtitle: topSuspect
+            ? `🕵️ Night Whispers: ${topSuspect.name} was the town's #1 suspect! Debate and question them.`
+            : 'Open debate. All mics unmuted. Discuss who is suspicious!',
           bg: 'bg-white dark:bg-[#1E242B] border-stone-200 dark:border-stone-800 text-stone-900 dark:text-stone-100',
         }
-      case 'DAY_VOTING':
+      }
+      case 'DAY_VOTING': {
+        const topSuspect = roomState?.players?.find((p) => p.id === roomState?.mostSuspectedPlayerId)
         return {
           icon: <Vote className="w-5 h-5 text-red-500" />,
           title: 'Day Voting',
-          subtitle: 'Tap any player tile to cast vote or skip.',
+          subtitle: topSuspect
+            ? `Tap any player tile to cast vote or skip. (${topSuspect.name} got the #1 suspect tag).`
+            : 'Tap any player tile to cast vote or skip.',
           bg: 'bg-red-950/30 border-red-800/40 text-red-200',
         }
+      }
       case 'EXECUTION_REVEAL':
         return {
           icon: <Skull className="w-5 h-5 text-red-400" />,

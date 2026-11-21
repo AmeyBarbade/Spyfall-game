@@ -150,16 +150,30 @@ export function NightActionBar({
           )}
 
           {role === 'VILLAGER' && (
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 shrink-0">
-                <Eye className="w-5 h-5" />
+            <div className="flex items-center gap-3 w-full">
+              <div className="p-2.5 rounded-2xl bg-indigo-500/25 border border-indigo-400/50 text-indigo-300 shrink-0 shadow-lg shadow-indigo-950/60">
+                <Eye className="w-6 h-6 animate-pulse text-indigo-400" />
               </div>
-              <div className="flex flex-col">
-                <span className="font-bold text-xs sm:text-sm text-indigo-200">
-                  {selectedPlayer ? `Marked suspicious: ${selectedPlayer.name}` : 'Night Watch: Tap who feels suspicious'}
-                </span>
-                <span className="text-[11px] text-stone-400">
-                  Private note for your eyes only. Keeps your camera activity natural!
+              <div className="flex flex-col flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-sm text-indigo-100 flex items-center gap-1.5">
+                    <span>👁️ NIGHT WATCH:</span>
+                    <span className={selectedPlayer ? 'text-amber-300 underline' : 'text-indigo-200'}>
+                      {selectedPlayer
+                        ? `Suspecting ${selectedPlayer.name}!`
+                        : 'Tap Who You Suspect!'}
+                    </span>
+                  </span>
+                  {!selectedTargetId && (
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-900/80 text-amber-300 border border-indigo-400/40">
+                      {finalTimeLeft}s
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-stone-300 font-medium mt-0.5">
+                  {selectedTargetId
+                    ? `✓ Secret suspicion locked! The town's top suspect will get tagged during day discussion.`
+                    : 'Tap any player card to cast your suspicion! Keeps your hands moving on video so Mafia can’t tell who has a role.'}
                 </span>
               </div>
             </div>
