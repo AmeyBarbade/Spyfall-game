@@ -23,6 +23,10 @@ export class GameStateMachine {
       clearTimeout(this.timer)
       this.timer = null
     }
+    if (this.warningTimer) {
+      clearTimeout(this.warningTimer)
+      this.warningTimer = null
+    }
 
     this.room.phase = nextPhase
     this.room.phaseId = (this.room.phaseId || 0) + 1
@@ -150,15 +154,18 @@ export class GameStateMachine {
   }
 
   /**
-   * Phase 3: NIGHT (25s - 40s)
+   * Phase 3: NIGHT (10s initial action window + 10s final warning alarm)
    */
-  handleNightPhase(duration) {
+  handleNightPhase() {
     this.room.nightActions = {
       mafiaTargets: new Map(),
       mafiaConsensusTarget: null,
       doctorTarget: null,
       villagerNotes: new Map(),
     }
+    this.room.nightWarning = false
+    this.room.nightWarningEndsAt = Date.now() + 10000
+    this.room.phaseEndsAt = Date.now() + 20000
 
     // Keep mics muted during Night
     for (const player of this.room.players.values()) {
@@ -166,11 +173,63 @@ export class GameStateMachine {
     }
 
     const currentPhaseId = this.room.phaseId
+
+    // 10s Timer: If Mafia or Doctor hasn't acted, trigger final 10s warning alarm
+    this.warningTimer = setTimeout(() => {
+      if (this.room.phaseId === currentPhaseId && this.room.phase === 'NIGHT') {
+        const livingMafias = Array.from(this.room.players.values()).filter((p) => p.isAlive && p.role === 'MAFIA')
+        const mafiaPicks = livingMafias.map((m) => this.room.nightActions.mafiaTargets.get(m.id)).filter(Boolean)
+        const doctor = Array.from(this.room.players.values()).find((p) => p.isAlive && p.role === 'DOCTOR')
+        const doctorPick = doctor ? !!this.room.nightActions.doctorTarget : true
+
+        if (mafiaPicks.length < livingMafias.length || !doctorPick) {
+          console.log(`[Room ${this.room.code}] Night 10s Warning Alarm Triggered!`)
+          this.room.nightWarning = true
+          this.broadcastState()
+        }
+      }
+    }, 10000)
+
+    // 20s Total: auto-resolve if still not selected
     this.timer = setTimeout(() => {
       if (this.room.phaseId === currentPhaseId) {
+        this.resolveNightTimeout()
         this.transitionTo('DAWN_COOLDOWN')
       }
-    }, duration * 1000)
+    }, 20000)
+  }
+
+  /**
+   * AFK resolution after warning: randomly select an innocent non-mafia player
+   */
+  resolveNightTimeout() {
+    const livingMafias = Array.from(this.room.players.values()).filter((p) => p.isAlive && p.role === 'MAFIA')
+    const mafiaPicks = livingMafias.map((m) => this.room.nightActions.mafiaTargets.get(m.id)).filter(Boolean)
+
+    if (mafiaPicks.length === 0) {
+      // Pick random living non-mafia player
+      const eligibleTargets = Array.from(this.room.players.values()).filter(
+        (p) => p.isAlive && p.role !== 'MAFIA'
+      )
+      if (eligibleTargets.length > 0) {
+        const randomTarget = eligibleTargets[Math.floor(Math.random() * eligibleTargets.length)]
+        console.log(`[Room ${this.room.code}] AFK Mafia penalty: randomly targeted ${randomTarget.name}`)
+        for (const m of livingMafias) {
+          this.room.nightActions.mafiaTargets.set(m.id, randomTarget.id)
+        }
+        this.room.nightActions.mafiaConsensusTarget = randomTarget.id
+      }
+    }
+
+    // If Doctor did not select before warning ended: randomly pick an eligible living player
+    const doctor = Array.from(this.room.players.values()).find((p) => p.isAlive && p.role === 'DOCTOR')
+    if (doctor && !this.room.nightActions.doctorTarget) {
+      const eligibleHeal = Array.from(this.room.players.values()).filter((p) => p.isAlive)
+      if (eligibleHeal.length > 0) {
+        const randomHeal = eligibleHeal[Math.floor(Math.random() * eligibleHeal.length)]
+        this.room.nightActions.doctorTarget = randomHeal.id
+      }
+    }
   }
 
   /**

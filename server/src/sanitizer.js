@@ -100,6 +100,8 @@ export function sanitizeStateForPlayer(room, recipientPlayerId) {
     phaseId: room.phaseId,
     roundNumber: room.roundNumber,
     phaseEndsAt: room.phaseEndsAt,
+    nightWarning: !!room.nightWarning,
+    nightWarningEndsAt: room.nightWarningEndsAt || null,
     settings: room.settings,
     players: sanitizedPlayers,
     winner: room.winner || null,

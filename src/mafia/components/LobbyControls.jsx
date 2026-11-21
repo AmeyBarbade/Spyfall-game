@@ -149,6 +149,47 @@ export function LobbyControls({
         </div>
       )}
 
+      {/* Big Prominent Bottom Ready / Start Game Bar */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/95 via-black/85 to-transparent backdrop-blur-md z-30 flex justify-center">
+        <div className="w-full max-w-md flex flex-col gap-1.5 items-center">
+          {!isHost ? (
+            <button
+              onClick={onToggleReady}
+              className={`w-full py-4 px-6 rounded-2xl font-black text-lg shadow-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                localPlayer?.isReady
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/50'
+                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-purple-900/50 animate-pulse'
+              }`}
+            >
+              <Check className="w-6 h-6 stroke-[3]" />
+              <span>{localPlayer?.isReady ? '✓ You Are Ready (Tap to Unready)' : 'READY UP'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={onStartGame}
+              disabled={!canStart}
+              className={`w-full py-4 px-6 rounded-2xl font-black text-lg shadow-2xl transition-all flex items-center justify-center gap-2 ${
+                canStart
+                  ? 'bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 hover:from-red-500 hover:to-purple-500 text-white shadow-red-900/50 cursor-pointer active:scale-[0.98] animate-pulse'
+                  : 'bg-stone-800 text-stone-500 border border-stone-700 cursor-not-allowed'
+              }`}
+            >
+              <Play className="w-5 h-5 fill-current" />
+              <span>
+                {canStart
+                  ? 'START GAME'
+                  : players.length < minPlayers
+                  ? `Need ${minPlayers - players.length} More Player${minPlayers - players.length > 1 ? 's' : ''}`
+                  : `Waiting for Players to Ready (${readyCount}/${players.length})`}
+              </span>
+            </button>
+          )}
+          <span className="text-[11px] text-stone-400 font-semibold">
+            {readyCount} of {players.length} players ready
+          </span>
+        </div>
+      </div>
+
       {/* Host Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">

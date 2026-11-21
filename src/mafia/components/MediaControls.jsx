@@ -9,9 +9,10 @@ export function MediaControls({
   isAlive,
 }) {
   const isServerMuted = phase === 'ROLE_REVEAL' || phase === 'NIGHT' || phase === 'DAWN_COOLDOWN' || !isAlive
+  const positionClass = phase === 'LOBBY' ? 'bottom-24 right-4' : 'bottom-4 right-4'
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2">
+    <div className={`fixed ${positionClass} z-40 flex items-center gap-2 transition-all`}>
       <div className="bg-stone-900/90 backdrop-blur-md border border-white/20 p-1.5 rounded-full shadow-2xl flex items-center gap-2">
         {/* Mic Toggle Button */}
         <button
