@@ -9,6 +9,7 @@ import { RoleRevealModal } from './components/RoleRevealModal'
 import { NightActionBar } from './components/NightActionBar'
 import { GameOverSummary } from './components/GameOverSummary'
 import { DemoBanner } from './components/DemoBanner'
+import { MediaControls } from './components/MediaControls'
 import { Users, Plus, LogIn, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react'
 
 export function MafiaApp() {
@@ -392,6 +393,16 @@ export function MafiaApp() {
               onPlayAgain={playAgain}
             />
           )}
+
+          {/* Quick Floating Media Controls (Mute / Cam Switch) */}
+          <MediaControls
+            isMicMuted={isMicMuted}
+            isCamMuted={isCamMuted}
+            onToggleMic={toggleMic}
+            onToggleCam={toggleCam}
+            phase={roomState.phase}
+            isAlive={localPlayer?.isAlive ?? true}
+          />
         </div>
       )}
     </div>

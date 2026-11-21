@@ -261,6 +261,16 @@ export function PlayerTile({
               SPEAKING
             </span>
           )}
+          {livekitParticipant && !livekitParticipant.isMicrophoneEnabled && isAlive && (
+            <span className="p-1 rounded-md bg-red-950/80 text-red-400 border border-red-800/40 backdrop-blur-sm" title="Mic Muted">
+              <MicOff className="w-3 h-3" />
+            </span>
+          )}
+          {(!hasVideoTrack || (livekitParticipant && !livekitParticipant.isCameraEnabled)) && isAlive && (
+            <span className="p-1 rounded-md bg-stone-900/80 text-stone-400 border border-stone-700/40 backdrop-blur-sm" title="Camera Off">
+              <VideoOff className="w-3 h-3" />
+            </span>
+          )}
         </div>
       </div>
 
